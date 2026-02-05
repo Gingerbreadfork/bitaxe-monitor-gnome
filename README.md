@@ -74,7 +74,7 @@ This returns comprehensive system information including hashrate, temperature, p
 
 ## Requirements
 
-- GNOME Shell 45 or 46
+- GNOME Shell 45, 46, 47, 48, or 49
 - A Bitaxe device running AxeOS firmware
 - Network access to your Bitaxe device
 
