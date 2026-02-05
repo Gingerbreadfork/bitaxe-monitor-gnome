@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schemalist>
+  <schema id="org.gnome.shell.extensions.bitaxe-monitor" path="/org/gnome/shell/extensions/bitaxe-monitor/">
+    <key name="bitaxe-ip" type="s">
+      <default>''</default>
+      <summary>Bitaxe IP Address</summary>
+      <description>The IP address or hostname of your Bitaxe device</description>
+    </key>
+    <key name="refresh-interval" type="i">
+      <default>5</default>
+      <range min="1" max="60"/>
+      <summary>Refresh Interval</summary>
+      <description>How often to refresh the stats (in seconds)</description>
+    </key>
+    <key name="show-hashrate" type="b">
+      <default>true</default>
+      <summary>Show Hashrate</summary>
+      <description>Display hashrate on the panel</description>
+    </key>
+    <key name="show-temperature" type="b">
+      <default>true</default>
+      <summary>Show Temperature</summary>
+      <description>Display ASIC temperature on the panel</description>
+    </key>
+    <key name="show-power" type="b">
+      <default>true</default>
+      <summary>Show Power</summary>
+      <description>Display power consumption on the panel</description>
+    </key>
+    <key name="show-vrm-temp" type="b">
+      <default>false</default>
+      <summary>Show VRM Temperature</summary>
+      <description>Display VRM temperature on the panel</description>
+    </key>
+    <key name="show-efficiency" type="b">
+      <default>false</default>
+      <summary>Show Efficiency</summary>
+      <description>Display mining efficiency (GH/W) on the panel</description>
+    </key>
+    <key name="show-fan-rpm" type="b">
+      <default>false</default>
+      <summary>Show Fan RPM</summary>
+      <description>Display fan speed on the panel</description>
+    </key>
+    <key name="show-frequency" type="b">
+      <default>false</default>
+      <summary>Show Frequency</summary>
+      <description>Display ASIC frequency on the panel</description>
+    </key>
+    <key name="show-shares" type="b">
+      <default>false</default>
+      <summary>Show Shares</summary>
+      <description>Display accepted shares count on the panel</description>
+    </key>
+    <key name="show-uptime" type="b">
+      <default>false</default>
+      <summary>Show Uptime</summary>
+      <description>Display device uptime on the panel</description>
+    </key>
+    <key name="panel-separator" type="s">
+      <default>'|'</default>
+      <summary>Panel Separator</summary>
+      <description>Separator character between panel items</description>
+      <choices>
+        <choice value='|'/>
+        <choice value='→'/>
+        <choice value='•'/>
+        <choice value='-'/>
+        <choice value='/'/>
+        <choice value=' '/>
+      </choices>
+    </key>
+    <key name="custom-separator" type="s">
+      <default>''</default>
+      <summary>Custom Separator</summary>
+      <description>Custom separator text (overrides panel-separator if not empty)</description>
+    </key>
+    <key name="hashrate-unit" type="s">
+      <default>'auto'</default>
+      <summary>Hashrate Unit</summary>
+      <description>Display unit for hashrate</description>
+      <choices>
+        <choice value='auto'/>
+        <choice value='GH/s'/>
+        <choice value='TH/s'/>
+      </choices>
+    </key>
+  </schema>
+</schemalist>

@@ -1,0 +1,42 @@
+.bitaxe-indicator {
+    padding: 0 8px;
+}
+
+.bitaxe-label {
+    font-weight: bold;
+}
+
+.bitaxe-popup-content {
+    padding: 6px 12px 10px;
+}
+
+.bitaxe-popup-columns {
+    spacing: 24px;
+}
+
+.bitaxe-popup-column {
+    spacing: 6px;
+    min-width: 220px;
+}
+
+.bitaxe-section-title {
+    font-weight: bold;
+    padding: 6px 0 2px;
+}
+
+.bitaxe-stat-row {
+    spacing: 12px;
+    padding: 2px 0;
+}
+
+.bitaxe-stat-label {
+    font-weight: 400;
+}
+
+.bitaxe-stat-value {
+    font-weight: 600;
+}
+
+.bitaxe-rails-box {
+    spacing: 4px;
+}
