@@ -2,6 +2,10 @@
 
 A GNOME Shell extension that displays real-time stats from your Bitaxe mining device directly on your panel.
 
+## Screenshot
+
+<img src="bitaxe-monitor.png" alt="Bitaxe Monitor GNOME Extension" width="300">
+
 ## Features
 
 - **Real-time monitoring** of your Bitaxe device
