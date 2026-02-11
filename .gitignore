@@ -1,4 +1,5 @@
 schemas/gschemas.compiled
+dist/
 *.swp
 *.swo
 *~
