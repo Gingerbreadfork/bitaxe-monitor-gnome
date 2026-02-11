@@ -4,23 +4,214 @@ import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import Soup from 'gi://Soup';
 import Clutter from 'gi://Clutter';
+import Pango from 'gi://Pango';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 
+const SPARKLINE_WIDTH = 88;
+const SPARKLINE_HEIGHT = 22;
+const SPARKLINE_PADDING = 2;
+const SPARKLINE_MAX_POINTS_MIN = 24;
+const SPARKLINE_MAX_POINTS_MAX = 240;
+const SPARKLINE_WINDOW_SECONDS = 600;
+const STATUS_NO_IP = 'No IP set';
+const STATUS_CONNECTING = 'Connecting...';
+const STATUS_DISCONNECTED = 'Disconnected';
+
+class Sparkline {
+    constructor({styleClass, maxPoints}) {
+        this._maxPoints = maxPoints;
+        this._values = [];
+
+        this.actor = new St.DrawingArea({
+            style_class: styleClass,
+            reactive: false,
+        });
+        this.actor.set_size(SPARKLINE_WIDTH, SPARKLINE_HEIGHT);
+        this.actor.connect('repaint', this._onRepaint.bind(this));
+        this.actor.connect('style-changed', () => this.actor.queue_repaint());
+    }
+
+    setMaxPoints(maxPoints) {
+        this._maxPoints = Math.max(2, maxPoints);
+        if (this._values.length > this._maxPoints) {
+            this._values = this._values.slice(this._values.length - this._maxPoints);
+        }
+        this.actor.queue_repaint();
+    }
+
+    push(value) {
+        this._values.push(Number.isFinite(value) ? value : null);
+        if (this._values.length > this._maxPoints) {
+            this._values.splice(0, this._values.length - this._maxPoints);
+        }
+        this.actor.queue_repaint();
+    }
+
+    clear() {
+        this._values = [];
+        this.actor.queue_repaint();
+    }
+
+    _onRepaint(area) {
+        const cr = area.get_context();
+        const [width, height] = area.get_surface_size();
+        if (width <= 0 || height <= 0) {
+            if (cr.$dispose) {
+                cr.$dispose();
+            }
+            return;
+        }
+
+        const themeNode = this.actor.get_theme_node();
+        const color = themeNode.get_foreground_color();
+        const r = color.red / 255;
+        const g = color.green / 255;
+        const b = color.blue / 255;
+        const a = color.alpha / 255;
+
+        const padding = SPARKLINE_PADDING;
+        const innerWidth = Math.max(0, width - padding * 2);
+        const innerHeight = Math.max(0, height - padding * 2);
+        if (innerWidth <= 0 || innerHeight <= 0) {
+            if (cr.$dispose) {
+                cr.$dispose();
+            }
+            return;
+        }
+
+        const midY = padding + innerHeight / 2;
+        cr.setLineWidth(1);
+        cr.setSourceRGBA(r, g, b, 0.12 * a);
+        cr.moveTo(padding, midY);
+        cr.lineTo(padding + innerWidth, midY);
+        cr.stroke();
+
+        if (this._values.length === 0) {
+            if (cr.$dispose) {
+                cr.$dispose();
+            }
+            return;
+        }
+
+        let min = Infinity;
+        let max = -Infinity;
+        for (const value of this._values) {
+            if (Number.isFinite(value)) {
+                min = Math.min(min, value);
+                max = Math.max(max, value);
+            }
+        }
+
+        if (!Number.isFinite(min) || !Number.isFinite(max)) {
+            if (cr.$dispose) {
+                cr.$dispose();
+            }
+            return;
+        }
+
+        let range = max - min;
+        if (range < 1e-6) {
+            min -= 1;
+            max += 1;
+            range = max - min;
+        }
+
+        const step = this._values.length > 1 ? innerWidth / (this._values.length - 1) : 0;
+        const segments = [];
+        let current = [];
+
+        for (let i = 0; i < this._values.length; i++) {
+            const value = this._values[i];
+            if (!Number.isFinite(value)) {
+                if (current.length > 0) {
+                    segments.push(current);
+                    current = [];
+                }
+                continue;
+            }
+
+            const x = padding + step * i;
+            const y = padding + ((max - value) / range) * innerHeight;
+            current.push([x, y]);
+        }
+
+        if (current.length > 0) {
+            segments.push(current);
+        }
+
+        for (const segment of segments) {
+            if (segment.length === 1) {
+                const [x, y] = segment[0];
+                cr.setSourceRGBA(r, g, b, 0.9 * a);
+                cr.arc(x, y, 1.6, 0, Math.PI * 2);
+                cr.fill();
+                continue;
+            }
+
+            const last = segment[segment.length - 1];
+
+            cr.newPath();
+            cr.moveTo(segment[0][0], segment[0][1]);
+            for (let i = 1; i < segment.length; i++) {
+                cr.lineTo(segment[i][0], segment[i][1]);
+            }
+            cr.lineTo(last[0], padding + innerHeight);
+            cr.lineTo(segment[0][0], padding + innerHeight);
+            cr.closePath();
+            cr.setSourceRGBA(r, g, b, 0.18 * a);
+            cr.fill();
+
+            cr.newPath();
+            cr.moveTo(segment[0][0], segment[0][1]);
+            for (let i = 1; i < segment.length; i++) {
+                cr.lineTo(segment[i][0], segment[i][1]);
+            }
+            cr.setLineWidth(1.4);
+            cr.setLineCap(1);
+            cr.setLineJoin(1);
+            cr.setSourceRGBA(r, g, b, 0.9 * a);
+            cr.stroke();
+        }
+
+        for (let i = this._values.length - 1; i >= 0; i--) {
+            const value = this._values[i];
+            if (!Number.isFinite(value)) {
+                continue;
+            }
+            const x = padding + step * i;
+            const y = padding + ((max - value) / range) * innerHeight;
+            cr.setSourceRGBA(r, g, b, 1.0 * a);
+            cr.arc(x, y, 2.0, 0, Math.PI * 2);
+            cr.fill();
+            break;
+        }
+
+        if (cr.$dispose) {
+            cr.$dispose();
+        }
+    }
+}
+
 const BitaxeIndicator = GObject.registerClass(
 class BitaxeIndicator extends PanelMenu.Button {
-    _init(settings) {
+    _init(settings, openPreferencesCallback = null) {
         super._init(0.0, 'Bitaxe Monitor', false);
 
         this._settings = settings;
+        this._openPreferences = openPreferencesCallback;
         this._httpSession = new Soup.Session();
         this._cancellable = new Gio.Cancellable();
         this._timeoutId = null;
         this._ipDebounceId = null;
         this._inFlight = false;
         this._stats = null;
+        this._hasFetchedStats = false;
+        this._lastFailureLogKey = null;
+        this._sparklineSeries = new Map();
+        this._sparklineMaxPoints = this._getSparklineMaxPoints();
 
         this.add_style_class_name('bitaxe-indicator');
 
@@ -44,6 +235,7 @@ class BitaxeIndicator extends PanelMenu.Button {
             'show-frequency',
             'show-shares',
             'show-uptime',
+            'show-sparklines',
             'panel-separator',
             'custom-separator',
             'hashrate-unit',
@@ -56,6 +248,13 @@ class BitaxeIndicator extends PanelMenu.Button {
         }
 
         this._settingsChangedIds.push(
+            this._settings.connect('changed::show-sparklines', () => this._updateSparklineVisibility())
+        );
+        this._settingsChangedIds.push(
+            this._settings.connect('changed::show-network-info', () => this._updateNetworkVisibility())
+        );
+
+        this._settingsChangedIds.push(
             this._settings.connect('changed::refresh-interval', () => this._refresh())
         );
         this._settingsChangedIds.push(
@@ -66,7 +265,7 @@ class BitaxeIndicator extends PanelMenu.Button {
     }
 
     _createMenuItems() {
-        const headerItem = new PopupMenu.PopupMenuItem('Bitaxe Stats', {
+        const headerItem = new PopupMenu.PopupMenuItem('Bitaxe Monitor', {
             reactive: false,
         });
         headerItem.label.style = 'font-weight: bold;';
@@ -82,16 +281,24 @@ class BitaxeIndicator extends PanelMenu.Button {
             x_expand: true,
         });
         this._leftColumn = new St.BoxLayout({
-            style_class: 'bitaxe-popup-column',
+            style_class: 'bitaxe-popup-column bitaxe-popup-column-left',
             vertical: true,
             x_expand: true,
+            clip_to_allocation: true,
         });
         this._rightColumn = new St.BoxLayout({
-            style_class: 'bitaxe-popup-column',
+            style_class: 'bitaxe-popup-column bitaxe-popup-column-right',
             vertical: true,
             x_expand: true,
+            clip_to_allocation: true,
+        });
+        this._columnDivider = new St.Widget({
+            style_class: 'bitaxe-popup-divider',
+            y_expand: true,
+            y_align: Clutter.ActorAlign.FILL,
         });
         this._columnsBox.add_child(this._leftColumn);
+        this._columnsBox.add_child(this._columnDivider);
         this._columnsBox.add_child(this._rightColumn);
 
         const contentItem = new PopupMenu.PopupBaseMenuItem({
@@ -103,21 +310,21 @@ class BitaxeIndicator extends PanelMenu.Button {
         this.menu.addMenuItem(contentItem);
 
         this._addSection(this._leftColumn, 'Hashrate', [
-            {key: 'hashrate', label: 'Hashrate'},
+            {key: 'hashrate', label: 'Hashrate', sparkline: 'hashrate'},
             {key: 'hashrate1m', label: 'Hashrate 1m'},
             {key: 'hashrate10m', label: 'Hashrate 10m'},
             {key: 'hashrate1h', label: 'Hashrate 1h'},
-            {key: 'errorRate', label: 'Error Rate'},
+            {key: 'errorRate', label: 'Error Rate', sparkline: 'error-rate'},
         ]);
 
         this._addSection(this._leftColumn, 'Temperature', [
-            {key: 'asicTemp', label: 'ASIC Temp'},
-            {key: 'vrmTemp', label: 'VRM Temp'},
+            {key: 'asicTemp', label: 'ASIC Temp', sparkline: 'temp'},
+            {key: 'vrmTemp', label: 'VRM Temp', sparkline: 'vrm-temp'},
             {key: 'tempTarget', label: 'Temp Target'},
         ]);
 
         this._addSection(this._leftColumn, 'Power', [
-            {key: 'power', label: 'Power'},
+            {key: 'power', label: 'Power', sparkline: 'power'},
             {key: 'voltage', label: 'Voltage'},
             {key: 'current', label: 'Current'},
             {key: 'coreVoltage', label: 'Core Voltage'},
@@ -135,9 +342,9 @@ class BitaxeIndicator extends PanelMenu.Button {
         this._leftColumn.add_child(this._voltageRailsBox);
 
         this._addSection(this._leftColumn, 'Performance', [
-            {key: 'fan', label: 'Fan'},
+            {key: 'fan', label: 'Fan', sparkline: 'fan'},
             {key: 'frequency', label: 'Frequency'},
-            {key: 'efficiency', label: 'Efficiency'},
+            {key: 'efficiency', label: 'Efficiency', sparkline: 'efficiency'},
             {key: 'overclock', label: 'Overclock'},
         ]);
 
@@ -161,20 +368,57 @@ class BitaxeIndicator extends PanelMenu.Button {
             {key: 'boardVersion', label: 'Board Version'},
         ]);
 
-        this._addSection(this._rightColumn, 'Network', [
+        this._networkSectionActors = this._addSection(this._rightColumn, 'Network', [
             {key: 'ipAddress', label: 'IP Address'},
             {key: 'ssid', label: 'SSID'},
             {key: 'wifiRssi', label: 'Wi-Fi RSSI'},
             {key: 'freeHeap', label: 'Free Heap'},
         ]);
+        this._updateNetworkVisibility();
 
         this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
 
-        const refreshItem = new PopupMenu.PopupMenuItem('Refresh Now');
-        refreshItem.connect('activate', () => {
+        const actionsItem = new PopupMenu.PopupBaseMenuItem({
+            reactive: false,
+            can_focus: false,
+        });
+        const actionsBox = new St.BoxLayout({
+            style_class: 'bitaxe-popup-actions',
+            x_expand: true,
+        });
+
+        const refreshButton = new St.Button({
+            label: 'Refresh Now',
+            style_class: 'bitaxe-popup-action-button',
+            x_expand: true,
+            can_focus: true,
+            reactive: true,
+            track_hover: true,
+        });
+        refreshButton.connect('clicked', () => {
             this._fetchStats();
         });
-        this.menu.addMenuItem(refreshItem);
+
+        const settingsButton = new St.Button({
+            label: 'Settings',
+            style_class: 'bitaxe-popup-action-button',
+            x_expand: true,
+            can_focus: true,
+            reactive: true,
+            track_hover: true,
+        });
+        settingsButton.connect('clicked', () => {
+            this.menu.close();
+            if (this._openPreferences) {
+                this._openPreferences();
+            }
+        });
+
+        actionsBox.add_child(refreshButton);
+        actionsBox.add_child(settingsButton);
+        actionsItem.actor.add_style_class_name('bitaxe-popup-actions-row');
+        actionsItem.actor.add_child(actionsBox);
+        this.menu.addMenuItem(actionsItem);
     }
 
     _refresh() {
@@ -182,6 +426,9 @@ class BitaxeIndicator extends PanelMenu.Button {
             GLib.source_remove(this._timeoutId);
             this._timeoutId = null;
         }
+
+        this._sparklineMaxPoints = this._getSparklineMaxPoints();
+        this._updateSparklineMaxPoints();
 
         this._fetchStats();
 
@@ -217,8 +464,14 @@ class BitaxeIndicator extends PanelMenu.Button {
         let ip = this._settings.get_string('bitaxe-ip');
 
         if (!ip || ip === '') {
-            this._clearStatsUI('No IP set');
+            this._hasFetchedStats = false;
+            this._lastFailureLogKey = null;
+            this._clearStatsUI(STATUS_NO_IP);
             return;
+        }
+
+        if (!this._hasFetchedStats) {
+            this._updateLabel(STATUS_CONNECTING);
         }
 
         let url = `http://${ip}/api/system/info`;
@@ -237,23 +490,72 @@ class BitaxeIndicator extends PanelMenu.Button {
             (session, result) => {
                 try {
                     let bytes = session.send_and_read_finish(result);
+                    let status = message.get_status();
+                    if (status !== Soup.Status.OK) {
+                        throw new Error(`HTTP ${status}: ${message.get_reason_phrase()}`);
+                    }
+
                     let decoder = new TextDecoder('utf-8');
                     let response = decoder.decode(bytes.get_data());
 
                     this._stats = JSON.parse(response);
+                    this._hasFetchedStats = true;
+                    this._lastFailureLogKey = null;
                     this._updateUI();
                 } catch (e) {
                     if (e.matches && e.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.CANCELLED)) {
                         return;
                     }
 
-                    logError(e, 'Failed to fetch Bitaxe stats');
-                    this._clearStatsUI('Error');
+                    this._handleFetchFailure(e, ip);
                 } finally {
                     this._inFlight = false;
                 }
             }
         );
+    }
+
+    _handleFetchFailure(error, ip) {
+        const expected = this._isExpectedConnectionIssue(error);
+        this._logFetchFailure(error, ip, expected);
+
+        if (this._hasFetchedStats) {
+            this._clearStatsUI(STATUS_DISCONNECTED);
+        } else {
+            this._clearStatsUI(STATUS_CONNECTING);
+        }
+    }
+
+    _isExpectedConnectionIssue(error) {
+        if (!error) {
+            return true;
+        }
+
+        if (error instanceof SyntaxError || error.name === 'SyntaxError') {
+            return false;
+        }
+
+        let message = String(error.message || error).toLowerCase();
+        if (message.includes('http ') || message.includes('json')) {
+            return false;
+        }
+
+        return true;
+    }
+
+    _logFetchFailure(error, ip, expected) {
+        let message = String((error && error.message) ? error.message : error);
+        let key = `${expected ? 'expected' : 'unexpected'}:${message}`;
+        if (key === this._lastFailureLogKey) {
+            return;
+        }
+
+        this._lastFailureLogKey = key;
+        if (expected) {
+            log(`[bitaxe-monitor] Waiting for Bitaxe (${ip}): ${message}`);
+        } else {
+            logError(error, 'Bitaxe monitor fetch failed');
+        }
     }
 
     _updateUI() {
@@ -429,6 +731,14 @@ class BitaxeIndicator extends PanelMenu.Button {
         this._setStatValue('freeHeap', this._formatBytes(freeHeap));
 
         this._updateVoltageRails();
+        this._pushSparkline('hashrate', this._toNumber(this._stats.hashRate, NaN));
+        this._pushSparkline('error-rate', errorPercentage);
+        this._pushSparkline('temp', this._toNumber(this._stats.temp, NaN));
+        this._pushSparkline('vrm-temp', this._toNumber(this._stats.vrTemp, NaN));
+        this._pushSparkline('power', this._toNumber(this._stats.power, NaN));
+        this._pushSparkline('fan', fanRpm);
+        this._pushSparkline('efficiency', efficiency);
+        this._updateSparklineVisibility();
     }
 
     _formatHashrate(hashrate) {
@@ -677,19 +987,33 @@ class BitaxeIndicator extends PanelMenu.Button {
     }
 
     _addSection(column, title, entries) {
+        let actors = [];
         let header = this._createSectionHeader(title);
         column.add_child(header);
+        actors.push(header);
+        const isLeftColumn = column === this._leftColumn;
 
         for (let entry of entries) {
-            column.add_child(this._createStatRow(entry));
+            let row = this._createStatRow(entry, {isLeftColumn});
+            column.add_child(row);
+            actors.push(row);
         }
+
+        return actors;
     }
 
-    _createStatRow(entry) {
+    _createStatRow(entry, options = {}) {
+        const isLeftColumn = Boolean(options.isLeftColumn);
         let row = new St.BoxLayout({
             style_class: 'bitaxe-stat-row',
             x_expand: true,
         });
+        if (isLeftColumn) {
+            row.add_style_class_name('bitaxe-stat-row-left');
+        }
+        if (entry.sparkline) {
+            row.add_style_class_name('bitaxe-stat-row-sparkline');
+        }
 
         let label = new St.Label({
             text: entry.label,
@@ -700,16 +1024,87 @@ class BitaxeIndicator extends PanelMenu.Button {
         let value = new St.Label({
             text: '--',
             style_class: 'bitaxe-stat-value',
-            x_expand: true,
+            x_expand: !isLeftColumn,
             x_align: Clutter.ActorAlign.END,
         });
+        if (value.clutter_text) {
+            value.clutter_text.set_single_line_mode(true);
+            value.clutter_text.set_ellipsize(Pango.EllipsizeMode.END);
+        }
 
         row.add_child(label);
+        if (isLeftColumn) {
+            const sparklineCell = new St.BoxLayout({
+                style_class: 'bitaxe-sparkline-cell',
+                x_align: Clutter.ActorAlign.CENTER,
+            });
+            if (entry.sparkline) {
+                const sparkline = this._ensureSparkline(entry.sparkline);
+                sparklineCell.add_child(sparkline.actor);
+            } else {
+                sparklineCell.add_style_class_name('bitaxe-sparkline-cell-empty');
+            }
+            row.add_child(sparklineCell);
+        } else if (entry.sparkline) {
+            const sparkline = this._ensureSparkline(entry.sparkline);
+            row.add_child(sparkline.actor);
+        }
         row.add_child(value);
 
         this._statValueLabels.set(entry.key, value);
 
         return row;
+    }
+
+    _ensureSparkline(key) {
+        let sparkline = this._sparklineSeries.get(key);
+        if (!sparkline) {
+            sparkline = new Sparkline({
+                styleClass: `bitaxe-sparkline bitaxe-sparkline-${key}`,
+                maxPoints: this._sparklineMaxPoints,
+            });
+            sparkline.actor.visible = this._settings.get_boolean('show-sparklines');
+            this._sparklineSeries.set(key, sparkline);
+        }
+        return sparkline;
+    }
+
+    _pushSparkline(key, value) {
+        const sparkline = this._sparklineSeries.get(key);
+        if (!sparkline) {
+            return;
+        }
+        sparkline.push(value);
+    }
+
+    _updateSparklineMaxPoints() {
+        for (const sparkline of this._sparklineSeries.values()) {
+            sparkline.setMaxPoints(this._sparklineMaxPoints);
+        }
+    }
+
+    _updateSparklineVisibility() {
+        const visible = this._settings.get_boolean('show-sparklines');
+        for (const sparkline of this._sparklineSeries.values()) {
+            sparkline.actor.visible = visible;
+        }
+    }
+
+    _updateNetworkVisibility() {
+        const visible = this._settings.get_boolean('show-network-info');
+        if (!this._networkSectionActors) {
+            return;
+        }
+
+        for (const actor of this._networkSectionActors) {
+            actor.visible = visible;
+        }
+    }
+
+    _getSparklineMaxPoints() {
+        const interval = Math.max(1, this._settings.get_int('refresh-interval'));
+        const points = Math.round(SPARKLINE_WINDOW_SECONDS / interval);
+        return Math.max(SPARKLINE_MAX_POINTS_MIN, Math.min(SPARKLINE_MAX_POINTS_MAX, points));
     }
 
     _clearVoltageRails() {
@@ -773,6 +1168,13 @@ class BitaxeIndicator extends PanelMenu.Button {
         this._setStatValue('freeHeap', '--');
 
         this._clearVoltageRails();
+        this._clearSparklines();
+    }
+
+    _clearSparklines() {
+        for (const sparkline of this._sparklineSeries.values()) {
+            sparkline.clear();
+        }
     }
 
     destroy() {
@@ -803,14 +1205,29 @@ class BitaxeIndicator extends PanelMenu.Button {
             this._httpSession = null;
         }
 
+        if (this._sparklineSeries) {
+            this._sparklineSeries.clear();
+            this._sparklineSeries = null;
+        }
+
         super.destroy();
     }
 });
 
 export default class BitaxeMonitorExtension extends Extension {
     enable() {
+        if (this._indicator) {
+            this._indicator.destroy();
+            this._indicator = null;
+        }
+
+        const existing = Main.panel.statusArea[this.uuid];
+        if (existing) {
+            existing.destroy();
+        }
+
         this._settings = this.getSettings();
-        this._indicator = new BitaxeIndicator(this._settings);
+        this._indicator = new BitaxeIndicator(this._settings, () => this.openPreferences());
         Main.panel.addToStatusArea(this.uuid, this._indicator);
     }
 

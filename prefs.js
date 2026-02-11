@@ -64,6 +64,14 @@ export default class BitaxeMonitorPreferences extends ExtensionPreferences {
         addSwitchRow(displayGroup, 'show-shares', 'Show Shares', 'Display accepted shares count on the panel');
         addSwitchRow(displayGroup, 'show-uptime', 'Show Uptime', 'Display device uptime on the panel');
 
+        const popupGroup = new Adw.PreferencesGroup({
+            title: 'Popup Settings',
+            description: 'Customize the stats popup menu',
+        });
+        page.add(popupGroup);
+        addSwitchRow(popupGroup, 'show-sparklines', 'Show Sparklines', 'Display inline history sparklines in the popup (enabled by default)');
+        addSwitchRow(popupGroup, 'show-network-info', 'Show Network Info', 'Display IP, SSID, RSSI, and heap info in the popup (great to disable for screenshots)');
+
         const appearanceGroup = new Adw.PreferencesGroup({
             title: 'Appearance Settings',
             description: 'Customize the panel display appearance',

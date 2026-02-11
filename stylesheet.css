@@ -4,19 +4,66 @@
 
 .bitaxe-label {
     font-weight: bold;
+    font-family: monospace;
+    font-feature-settings: "tnum";
 }
 
 .bitaxe-popup-content {
     padding: 6px 12px 10px;
 }
 
+.bitaxe-popup-actions-row {
+    padding: 2px 12px 8px;
+}
+
+.bitaxe-popup-actions {
+    spacing: 8px;
+}
+
+.bitaxe-popup-action-button {
+    padding: 6px 10px;
+    border-radius: 8px;
+    border: 1px solid rgba(127, 127, 127, 0.25);
+    background-color: rgba(127, 127, 127, 0.12);
+    font-weight: 600;
+}
+
+.bitaxe-popup-action-button:hover {
+    background-color: rgba(127, 127, 127, 0.2);
+}
+
+.bitaxe-popup-action-button:active {
+    background-color: rgba(127, 127, 127, 0.28);
+}
+
 .bitaxe-popup-columns {
-    spacing: 24px;
+    spacing: 6px;
 }
 
 .bitaxe-popup-column {
     spacing: 6px;
-    min-width: 220px;
+}
+
+.bitaxe-popup-column-left {
+    min-width: 318px;
+    max-width: 318px;
+    padding-right: 4px;
+}
+
+.bitaxe-popup-column-right {
+    min-width: 330px;
+    max-width: 330px;
+    padding-left: 8px;
+}
+
+.bitaxe-popup-column-right .bitaxe-stat-value {
+    width: 214px;
+}
+
+.bitaxe-popup-divider {
+    width: 10px;
+    margin: 10px 0;
+    border-left: 1px solid rgba(127, 127, 127, 0.45);
 }
 
 .bitaxe-section-title {
@@ -25,18 +72,81 @@
 }
 
 .bitaxe-stat-row {
-    spacing: 12px;
+    spacing: 10px;
     padding: 2px 0;
+}
+
+.bitaxe-stat-row-left {
+    spacing: 6px;
+}
+
+.bitaxe-stat-row-sparkline {
+    spacing: 8px;
+}
+
+.bitaxe-stat-row-left.bitaxe-stat-row-sparkline {
+    spacing: 6px;
 }
 
 .bitaxe-stat-label {
     font-weight: 400;
+    min-width: 86px;
+}
+
+.bitaxe-stat-row-left .bitaxe-stat-label {
+    width: 88px;
 }
 
 .bitaxe-stat-value {
     font-weight: 600;
+    width: 116px;
+    text-align: right;
+    font-family: monospace;
+    font-feature-settings: "tnum";
 }
 
 .bitaxe-rails-box {
     spacing: 4px;
+}
+
+.bitaxe-sparkline {
+    width: 88px;
+    height: 22px;
+    margin: 0;
+}
+
+.bitaxe-sparkline-cell {
+    width: 92px;
+}
+
+.bitaxe-stat-row-left .bitaxe-stat-value {
+    width: 108px;
+}
+
+.bitaxe-sparkline-hashrate {
+    color: #4bb3fd;
+}
+
+.bitaxe-sparkline-temp {
+    color: #ff8a3d;
+}
+
+.bitaxe-sparkline-vrm-temp {
+    color: #ff5d5d;
+}
+
+.bitaxe-sparkline-power {
+    color: #7ddc6f;
+}
+
+.bitaxe-sparkline-fan {
+    color: #9c7bff;
+}
+
+.bitaxe-sparkline-efficiency {
+    color: #f0c36d;
+}
+
+.bitaxe-sparkline-error-rate {
+    color: #f1549b;
 }

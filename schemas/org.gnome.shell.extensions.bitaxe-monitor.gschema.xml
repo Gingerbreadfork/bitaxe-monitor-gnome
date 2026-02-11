@@ -57,6 +57,16 @@
       <summary>Show Uptime</summary>
       <description>Display device uptime on the panel</description>
     </key>
+    <key name="show-sparklines" type="b">
+      <default>true</default>
+      <summary>Show Sparklines</summary>
+      <description>Display inline history sparklines in the popup</description>
+    </key>
+    <key name="show-network-info" type="b">
+      <default>true</default>
+      <summary>Show Network Info</summary>
+      <description>Display network details in the popup menu</description>
+    </key>
     <key name="panel-separator" type="s">
       <default>'|'</default>
       <summary>Panel Separator</summary>
