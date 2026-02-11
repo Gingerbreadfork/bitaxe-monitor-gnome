@@ -11,9 +11,8 @@ require_cmd() {
   fi
 }
 
+require_cmd gnome-extensions
 require_cmd python3
-require_cmd glib-compile-schemas
-require_cmd zip
 
 uuid="$(python3 - <<'PY'
 import json
@@ -22,22 +21,11 @@ with open("metadata.json", "r", encoding="utf-8") as f:
 PY
 )"
 
-schema_dir="$ROOT/schemas"
-if [ -d "$schema_dir" ]; then
-  glib-compile-schemas "$schema_dir"
-fi
-
 dist_dir="$ROOT/dist"
 mkdir -p "$dist_dir"
-zip_path="$dist_dir/${uuid}.zip"
-rm -f "$zip_path"
-
-include_paths=()
-for p in metadata.json extension.js prefs.js stylesheet.css schemas icons; do
-  if [ -e "$p" ]; then
-    include_paths+=("$p")
-  fi
-done
+bundle_path="$dist_dir/${uuid}.shell-extension.zip"
+legacy_path="$dist_dir/${uuid}.zip"
+rm -f "$bundle_path" "$legacy_path"
 
 if [ ! -f metadata.json ]; then
   echo "Error: metadata.json not found in $ROOT" >&2
@@ -48,5 +36,11 @@ if [ ! -f extension.js ]; then
   exit 1
 fi
 
-zip -r -9 "$zip_path" "${include_paths[@]}"
-echo "Created: $zip_path"
+gnome-extensions pack -f -o "$dist_dir" "$ROOT"
+
+if [ ! -f "$bundle_path" ]; then
+  echo "Error: expected bundle not found: $bundle_path" >&2
+  exit 1
+fi
+
+echo "Created: $bundle_path"

@@ -67,6 +67,12 @@
       <summary>Show Network Info</summary>
       <description>Display network details in the popup menu</description>
     </key>
+    <key name="sparkline-window-minutes" type="i">
+      <default>5</default>
+      <range min="1" max="60"/>
+      <summary>Sparkline Window</summary>
+      <description>How many minutes of history to show in popup sparklines</description>
+    </key>
     <key name="panel-separator" type="s">
       <default>'|'</default>
       <summary>Panel Separator</summary>

@@ -70,6 +70,20 @@ export default class BitaxeMonitorPreferences extends ExtensionPreferences {
         });
         page.add(popupGroup);
         addSwitchRow(popupGroup, 'show-sparklines', 'Show Sparklines', 'Display inline history sparklines in the popup (enabled by default)');
+        const sparklineWindowRow = new Adw.SpinRow({
+            title: 'Sparkline Window',
+            subtitle: 'How much history to show in sparklines (minutes)',
+            adjustment: new Gtk.Adjustment({
+                lower: 1,
+                upper: 60,
+                step_increment: 1,
+            }),
+        });
+        sparklineWindowRow.set_value(settings.get_int('sparkline-window-minutes'));
+        sparklineWindowRow.connect('notify::value', (widget) => {
+            settings.set_int('sparkline-window-minutes', Math.round(widget.get_value()));
+        });
+        popupGroup.add(sparklineWindowRow);
         addSwitchRow(popupGroup, 'show-network-info', 'Show Network Info', 'Display IP, SSID, RSSI, and heap info in the popup (great to disable for screenshots)');
 
         const appearanceGroup = new Adw.PreferencesGroup({

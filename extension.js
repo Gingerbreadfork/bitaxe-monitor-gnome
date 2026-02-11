@@ -13,16 +13,16 @@ import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 const SPARKLINE_WIDTH = 88;
 const SPARKLINE_HEIGHT = 22;
 const SPARKLINE_PADDING = 2;
-const SPARKLINE_MAX_POINTS_MIN = 24;
-const SPARKLINE_MAX_POINTS_MAX = 240;
-const SPARKLINE_WINDOW_SECONDS = 600;
+const SPARKLINE_WINDOW_DEFAULT_MINUTES = 5;
+const SPARKLINE_MAX_POINTS_HARD_CAP = 720;
 const STATUS_NO_IP = 'No IP set';
 const STATUS_CONNECTING = 'Connecting...';
 const STATUS_DISCONNECTED = 'Disconnected';
 
 class Sparkline {
-    constructor({styleClass, maxPoints}) {
-        this._maxPoints = maxPoints;
+    constructor({styleClass, windowSeconds = SPARKLINE_WINDOW_DEFAULT_MINUTES * 60, maxPoints = SPARKLINE_MAX_POINTS_HARD_CAP}) {
+        this._windowSeconds = Math.max(30, windowSeconds);
+        this._maxPoints = Math.max(10, maxPoints);
         this._values = [];
 
         this.actor = new St.DrawingArea({
@@ -34,16 +34,19 @@ class Sparkline {
         this.actor.connect('style-changed', () => this.actor.queue_repaint());
     }
 
-    setMaxPoints(maxPoints) {
-        this._maxPoints = Math.max(2, maxPoints);
-        if (this._values.length > this._maxPoints) {
-            this._values = this._values.slice(this._values.length - this._maxPoints);
-        }
+    setWindowSeconds(windowSeconds) {
+        this._windowSeconds = Math.max(30, windowSeconds);
+        this._pruneOld(this._nowSeconds());
         this.actor.queue_repaint();
     }
 
     push(value) {
-        this._values.push(Number.isFinite(value) ? value : null);
+        const now = this._nowSeconds();
+        this._values.push({
+            timestamp: now,
+            value: Number.isFinite(value) ? value : null,
+        });
+        this._pruneOld(now);
         if (this._values.length > this._maxPoints) {
             this._values.splice(0, this._values.length - this._maxPoints);
         }
@@ -53,6 +56,17 @@ class Sparkline {
     clear() {
         this._values = [];
         this.actor.queue_repaint();
+    }
+
+    _nowSeconds() {
+        return GLib.get_monotonic_time() / 1_000_000;
+    }
+
+    _pruneOld(nowSeconds) {
+        const cutoff = nowSeconds - this._windowSeconds;
+        while (this._values.length > 0 && this._values[0].timestamp < cutoff) {
+            this._values.shift();
+        }
     }
 
     _onRepaint(area) {
@@ -98,7 +112,8 @@ class Sparkline {
 
         let min = Infinity;
         let max = -Infinity;
-        for (const value of this._values) {
+        for (const point of this._values) {
+            const value = point.value;
             if (Number.isFinite(value)) {
                 min = Math.min(min, value);
                 max = Math.max(max, value);
@@ -119,12 +134,22 @@ class Sparkline {
             range = max - min;
         }
 
-        const step = this._values.length > 1 ? innerWidth / (this._values.length - 1) : 0;
+        const oldestTimestamp = this._values[0].timestamp;
+        const latestTimestamp = this._values[this._values.length - 1].timestamp;
+        const observedSpanSeconds = Math.max(0, latestTimestamp - oldestTimestamp);
+
+        // Warm-up mode: until we have a full history window, spread points
+        // over the observed range so the sparkline "fills in" naturally.
+        const startTimestamp = observedSpanSeconds < this._windowSeconds
+            ? oldestTimestamp
+            : latestTimestamp - this._windowSeconds;
+        const plotSpanSeconds = Math.max(1e-6, latestTimestamp - startTimestamp);
         const segments = [];
         let current = [];
 
         for (let i = 0; i < this._values.length; i++) {
-            const value = this._values[i];
+            const point = this._values[i];
+            const value = point.value;
             if (!Number.isFinite(value)) {
                 if (current.length > 0) {
                     segments.push(current);
@@ -133,7 +158,8 @@ class Sparkline {
                 continue;
             }
 
-            const x = padding + step * i;
+            const position = (point.timestamp - startTimestamp) / plotSpanSeconds;
+            const x = padding + Math.min(1, Math.max(0, position)) * innerWidth;
             const y = padding + ((max - value) / range) * innerHeight;
             current.push([x, y]);
         }
@@ -177,11 +203,13 @@ class Sparkline {
         }
 
         for (let i = this._values.length - 1; i >= 0; i--) {
-            const value = this._values[i];
+            const point = this._values[i];
+            const value = point.value;
             if (!Number.isFinite(value)) {
                 continue;
             }
-            const x = padding + step * i;
+            const position = (point.timestamp - startTimestamp) / plotSpanSeconds;
+            const x = padding + Math.min(1, Math.max(0, position)) * innerWidth;
             const y = padding + ((max - value) / range) * innerHeight;
             cr.setSourceRGBA(r, g, b, 1.0 * a);
             cr.arc(x, y, 2.0, 0, Math.PI * 2);
@@ -211,7 +239,8 @@ class BitaxeIndicator extends PanelMenu.Button {
         this._hasFetchedStats = false;
         this._lastFailureLogKey = null;
         this._sparklineSeries = new Map();
-        this._sparklineMaxPoints = this._getSparklineMaxPoints();
+        this._pendingPanelLabelText = null;
+        this._sparklineWindowSeconds = this._getSparklineWindowSeconds();
 
         this.add_style_class_name('bitaxe-indicator');
 
@@ -223,6 +252,12 @@ class BitaxeIndicator extends PanelMenu.Button {
         this.add_child(this._label);
 
         this._createMenuItems();
+        this.menu.connect('open-state-changed', (_menu, isOpen) => {
+            if (!isOpen && this._pendingPanelLabelText !== null) {
+                this._label.text = this._pendingPanelLabelText;
+                this._pendingPanelLabelText = null;
+            }
+        });
 
         this._settingsChangedIds = [];
         const updateKeys = [
@@ -253,6 +288,9 @@ class BitaxeIndicator extends PanelMenu.Button {
         this._settingsChangedIds.push(
             this._settings.connect('changed::show-network-info', () => this._updateNetworkVisibility())
         );
+        this._settingsChangedIds.push(
+            this._settings.connect('changed::sparkline-window-minutes', () => this._updateSparklineWindow())
+        );
 
         this._settingsChangedIds.push(
             this._settings.connect('changed::refresh-interval', () => this._refresh())
@@ -268,7 +306,7 @@ class BitaxeIndicator extends PanelMenu.Button {
         const headerItem = new PopupMenu.PopupMenuItem('Bitaxe Monitor', {
             reactive: false,
         });
-        headerItem.label.style = 'font-weight: bold;';
+        headerItem.label.add_style_class_name('bitaxe-popup-title');
         this.menu.addMenuItem(headerItem);
 
         this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
@@ -366,6 +404,7 @@ class BitaxeIndicator extends PanelMenu.Button {
             {key: 'model', label: 'Model'},
             {key: 'version', label: 'Version'},
             {key: 'boardVersion', label: 'Board Version'},
+            {key: 'updatedLast', label: 'Last Refresh'},
         ]);
 
         this._networkSectionActors = this._addSection(this._rightColumn, 'Network', [
@@ -389,7 +428,7 @@ class BitaxeIndicator extends PanelMenu.Button {
 
         const refreshButton = new St.Button({
             label: 'Refresh Now',
-            style_class: 'bitaxe-popup-action-button',
+            style_class: 'button bitaxe-popup-action-button',
             x_expand: true,
             can_focus: true,
             reactive: true,
@@ -401,7 +440,7 @@ class BitaxeIndicator extends PanelMenu.Button {
 
         const settingsButton = new St.Button({
             label: 'Settings',
-            style_class: 'bitaxe-popup-action-button',
+            style_class: 'button bitaxe-popup-action-button',
             x_expand: true,
             can_focus: true,
             reactive: true,
@@ -414,11 +453,14 @@ class BitaxeIndicator extends PanelMenu.Button {
             }
         });
 
+        this._refreshButton = refreshButton;
+
         actionsBox.add_child(refreshButton);
         actionsBox.add_child(settingsButton);
         actionsItem.actor.add_style_class_name('bitaxe-popup-actions-row');
         actionsItem.actor.add_child(actionsBox);
         this.menu.addMenuItem(actionsItem);
+        this._setRefreshButtonBusy(false);
     }
 
     _refresh() {
@@ -426,9 +468,6 @@ class BitaxeIndicator extends PanelMenu.Button {
             GLib.source_remove(this._timeoutId);
             this._timeoutId = null;
         }
-
-        this._sparklineMaxPoints = this._getSparklineMaxPoints();
-        this._updateSparklineMaxPoints();
 
         this._fetchStats();
 
@@ -466,6 +505,7 @@ class BitaxeIndicator extends PanelMenu.Button {
         if (!ip || ip === '') {
             this._hasFetchedStats = false;
             this._lastFailureLogKey = null;
+            this._setRefreshButtonBusy(false);
             this._clearStatsUI(STATUS_NO_IP);
             return;
         }
@@ -478,11 +518,11 @@ class BitaxeIndicator extends PanelMenu.Button {
         let message = Soup.Message.new('GET', url);
 
         if (this._inFlight) {
-            this._cancellable.cancel();
-            this._cancellable = new Gio.Cancellable();
+            return;
         }
 
         this._inFlight = true;
+        this._setRefreshButtonBusy(true);
         this._httpSession.send_and_read_async(
             message,
             GLib.PRIORITY_DEFAULT,
@@ -510,6 +550,7 @@ class BitaxeIndicator extends PanelMenu.Button {
                     this._handleFetchFailure(e, ip);
                 } finally {
                     this._inFlight = false;
+                    this._setRefreshButtonBusy(false);
                 }
             }
         );
@@ -739,6 +780,12 @@ class BitaxeIndicator extends PanelMenu.Button {
         this._pushSparkline('fan', fanRpm);
         this._pushSparkline('efficiency', efficiency);
         this._updateSparklineVisibility();
+        this._setStatValue('updatedLast', this._formatTimeNow());
+    }
+
+    _formatTimeNow() {
+        const now = GLib.DateTime.new_now_local();
+        return now.format('%H:%M:%S') || '--:--:--';
     }
 
     _formatHashrate(hashrate) {
@@ -968,6 +1015,11 @@ class BitaxeIndicator extends PanelMenu.Button {
     }
 
     _updateLabel(text) {
+        if (this.menu && this.menu.isOpen) {
+            this._pendingPanelLabelText = text;
+            return;
+        }
+        this._pendingPanelLabelText = null;
         this._label.text = text;
     }
 
@@ -1027,6 +1079,9 @@ class BitaxeIndicator extends PanelMenu.Button {
             x_expand: !isLeftColumn,
             x_align: Clutter.ActorAlign.END,
         });
+        if (!isLeftColumn) {
+            value.add_style_class_name('bitaxe-stat-value-fluid');
+        }
         if (value.clutter_text) {
             value.clutter_text.set_single_line_mode(true);
             value.clutter_text.set_ellipsize(Pango.EllipsizeMode.END);
@@ -1061,7 +1116,8 @@ class BitaxeIndicator extends PanelMenu.Button {
         if (!sparkline) {
             sparkline = new Sparkline({
                 styleClass: `bitaxe-sparkline bitaxe-sparkline-${key}`,
-                maxPoints: this._sparklineMaxPoints,
+                windowSeconds: this._sparklineWindowSeconds,
+                maxPoints: SPARKLINE_MAX_POINTS_HARD_CAP,
             });
             sparkline.actor.visible = this._settings.get_boolean('show-sparklines');
             this._sparklineSeries.set(key, sparkline);
@@ -1075,12 +1131,6 @@ class BitaxeIndicator extends PanelMenu.Button {
             return;
         }
         sparkline.push(value);
-    }
-
-    _updateSparklineMaxPoints() {
-        for (const sparkline of this._sparklineSeries.values()) {
-            sparkline.setMaxPoints(this._sparklineMaxPoints);
-        }
     }
 
     _updateSparklineVisibility() {
@@ -1101,10 +1151,25 @@ class BitaxeIndicator extends PanelMenu.Button {
         }
     }
 
-    _getSparklineMaxPoints() {
-        const interval = Math.max(1, this._settings.get_int('refresh-interval'));
-        const points = Math.round(SPARKLINE_WINDOW_SECONDS / interval);
-        return Math.max(SPARKLINE_MAX_POINTS_MIN, Math.min(SPARKLINE_MAX_POINTS_MAX, points));
+    _updateSparklineWindow() {
+        this._sparklineWindowSeconds = this._getSparklineWindowSeconds();
+        for (const sparkline of this._sparklineSeries.values()) {
+            sparkline.setWindowSeconds(this._sparklineWindowSeconds);
+        }
+    }
+
+    _getSparklineWindowSeconds() {
+        const minutes = Math.max(1, this._settings.get_int('sparkline-window-minutes') || SPARKLINE_WINDOW_DEFAULT_MINUTES);
+        return minutes * 60;
+    }
+
+    _setRefreshButtonBusy(isBusy) {
+        if (!this._refreshButton) {
+            return;
+        }
+
+        this._refreshButton.reactive = !isBusy;
+        this._refreshButton.can_focus = !isBusy;
     }
 
     _clearVoltageRails() {
@@ -1161,6 +1226,7 @@ class BitaxeIndicator extends PanelMenu.Button {
         this._setStatValue('model', '--');
         this._setStatValue('version', '--');
         this._setStatValue('boardVersion', '--');
+        this._setStatValue('updatedLast', '--');
 
         this._setStatValue('ipAddress', '--');
         this._setStatValue('ssid', '--');

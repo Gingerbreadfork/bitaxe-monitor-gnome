@@ -12,6 +12,10 @@
     padding: 6px 12px 10px;
 }
 
+.bitaxe-popup-title {
+    font-weight: 700;
+}
+
 .bitaxe-popup-actions-row {
     padding: 2px 12px 8px;
 }
@@ -23,21 +27,11 @@
 .bitaxe-popup-action-button {
     padding: 6px 10px;
     border-radius: 8px;
-    border: 1px solid rgba(127, 127, 127, 0.25);
-    background-color: rgba(127, 127, 127, 0.12);
     font-weight: 600;
 }
 
-.bitaxe-popup-action-button:hover {
-    background-color: rgba(127, 127, 127, 0.2);
-}
-
-.bitaxe-popup-action-button:active {
-    background-color: rgba(127, 127, 127, 0.28);
-}
-
 .bitaxe-popup-columns {
-    spacing: 6px;
+    spacing: 8px;
 }
 
 .bitaxe-popup-column {
@@ -45,35 +39,34 @@
 }
 
 .bitaxe-popup-column-left {
-    min-width: 318px;
-    max-width: 318px;
-    padding-right: 4px;
+    min-width: 300px;
+    padding-right: 6px;
 }
 
 .bitaxe-popup-column-right {
-    min-width: 330px;
-    max-width: 330px;
+    min-width: 296px;
     padding-left: 8px;
 }
 
-.bitaxe-popup-column-right .bitaxe-stat-value {
-    width: 214px;
-}
-
 .bitaxe-popup-divider {
-    width: 10px;
+    width: 6px;
     margin: 10px 0;
-    border-left: 1px solid rgba(127, 127, 127, 0.45);
+    border-left: 1px solid rgba(127, 127, 127, 0.3);
 }
 
 .bitaxe-section-title {
-    font-weight: bold;
-    padding: 6px 0 2px;
+    font-weight: 700;
+    padding: 10px 0 3px;
+    opacity: 0.9;
+}
+
+.bitaxe-popup-column .bitaxe-section-title:first-child {
+    padding-top: 2px;
 }
 
 .bitaxe-stat-row {
-    spacing: 10px;
-    padding: 2px 0;
+    spacing: 9px;
+    padding: 1px 0;
 }
 
 .bitaxe-stat-row-left {
@@ -89,7 +82,8 @@
 }
 
 .bitaxe-stat-label {
-    font-weight: 400;
+    font-weight: 500;
+    opacity: 0.88;
     min-width: 86px;
 }
 
@@ -99,10 +93,14 @@
 
 .bitaxe-stat-value {
     font-weight: 600;
-    width: 116px;
+    min-width: 112px;
     text-align: right;
     font-family: monospace;
     font-feature-settings: "tnum";
+}
+
+.bitaxe-stat-value-fluid {
+    min-width: 164px;
 }
 
 .bitaxe-rails-box {
@@ -120,6 +118,7 @@
 }
 
 .bitaxe-stat-row-left .bitaxe-stat-value {
+    min-width: 108px;
     width: 108px;
 }
 
