@@ -21,7 +21,6 @@ class BitaxeIndicator extends PanelMenu.Button {
         this._ipDebounceId = null;
         this._inFlight = false;
         this._stats = null;
-        this._destroyed = false;
 
         this.add_style_class_name('bitaxe-indicator');
 
@@ -215,10 +214,6 @@ class BitaxeIndicator extends PanelMenu.Button {
     }
 
     _fetchStats() {
-        if (this._destroyed) {
-            return;
-        }
-
         let ip = this._settings.get_string('bitaxe-ip');
 
         if (!ip || ip === '') {
@@ -241,10 +236,6 @@ class BitaxeIndicator extends PanelMenu.Button {
             this._cancellable,
             (session, result) => {
                 try {
-                    if (this._destroyed) {
-                        return;
-                    }
-
                     let bytes = session.send_and_read_finish(result);
                     let decoder = new TextDecoder('utf-8');
                     let response = decoder.decode(bytes.get_data());
@@ -252,10 +243,6 @@ class BitaxeIndicator extends PanelMenu.Button {
                     this._stats = JSON.parse(response);
                     this._updateUI();
                 } catch (e) {
-                    if (this._destroyed) {
-                        return;
-                    }
-
                     if (e.matches && e.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.CANCELLED)) {
                         return;
                     }
@@ -270,7 +257,7 @@ class BitaxeIndicator extends PanelMenu.Button {
     }
 
     _updateUI() {
-        if (this._destroyed || !this._stats) {
+        if (!this._stats) {
             return;
         }
 
@@ -789,8 +776,6 @@ class BitaxeIndicator extends PanelMenu.Button {
     }
 
     destroy() {
-        this._destroyed = true;
-
         if (this._timeoutId) {
             GLib.source_remove(this._timeoutId);
             this._timeoutId = null;

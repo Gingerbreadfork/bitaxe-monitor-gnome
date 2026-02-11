@@ -9,6 +9,9 @@
     "48",
     "49"
   ],
-  "url": "https://github.com/gingerbreadfork/bitaxe-gnome",
+  "url": "https://github.com/Gingerbreadfork/bitaxe-monitor-gnome",
+  "donations": {
+    "paypal": "gingerbreadfork"
+  },
   "settings-schema": "org.gnome.shell.extensions.bitaxe-monitor"
 }
