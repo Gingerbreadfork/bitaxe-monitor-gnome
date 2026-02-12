@@ -241,6 +241,7 @@ class BitaxeIndicator extends PanelMenu.Button {
         this._sparklineSeries = new Map();
         this._pendingPanelLabelText = null;
         this._sparklineWindowSeconds = this._getSparklineWindowSeconds();
+        this._isPaused = false;
 
         this.add_style_class_name('bitaxe-indicator');
 
@@ -296,7 +297,10 @@ class BitaxeIndicator extends PanelMenu.Button {
             this._settings.connect('changed::refresh-interval', () => this._refresh())
         );
         this._settingsChangedIds.push(
-            this._settings.connect('changed::bitaxe-ip', () => this._debounceRefresh())
+            this._settings.connect('changed::bitaxe-ip', () => {
+                this._updateWebUIButtonState();
+                this._debounceRefresh();
+            })
         );
 
         this._refresh();
@@ -453,14 +457,53 @@ class BitaxeIndicator extends PanelMenu.Button {
             }
         });
 
+        const openWebUIButton = new St.Button({
+            label: 'Open Web UI',
+            style_class: 'button bitaxe-popup-action-button',
+            x_expand: true,
+            can_focus: true,
+            reactive: true,
+            track_hover: true,
+        });
+        openWebUIButton.connect('clicked', () => {
+            const uri = this._getBitaxeWebUIUri();
+            if (!uri) {
+                return;
+            }
+            this.menu.close();
+            try {
+                Gio.AppInfo.launch_default_for_uri(uri, null);
+            } catch (error) {
+                logError(error, `[bitaxe-monitor] Failed to open Bitaxe Web UI: ${uri}`);
+            }
+        });
+
+        const pauseButton = new St.Button({
+            label: 'Pause',
+            style_class: 'button bitaxe-popup-action-button',
+            x_expand: true,
+            can_focus: true,
+            reactive: true,
+            track_hover: true,
+        });
+        pauseButton.connect('clicked', () => {
+            this._setPaused(!this._isPaused);
+        });
+
         this._refreshButton = refreshButton;
+        this._openWebUIButton = openWebUIButton;
+        this._pauseButton = pauseButton;
 
         actionsBox.add_child(refreshButton);
+        actionsBox.add_child(pauseButton);
+        actionsBox.add_child(openWebUIButton);
         actionsBox.add_child(settingsButton);
         actionsItem.actor.add_style_class_name('bitaxe-popup-actions-row');
         actionsItem.actor.add_child(actionsBox);
         this.menu.addMenuItem(actionsItem);
         this._setRefreshButtonBusy(false);
+        this._updatePauseButtonState();
+        this._updateWebUIButtonState();
     }
 
     _refresh() {
@@ -476,7 +519,9 @@ class BitaxeIndicator extends PanelMenu.Button {
             GLib.PRIORITY_DEFAULT,
             interval,
             () => {
-                this._fetchStats();
+                if (!this._isPaused) {
+                    this._fetchStats();
+                }
                 return GLib.SOURCE_CONTINUE;
             }
         );
@@ -500,6 +545,11 @@ class BitaxeIndicator extends PanelMenu.Button {
     }
 
     _fetchStats() {
+        if (this._isPaused) {
+            this._setRefreshButtonBusy(false);
+            return;
+        }
+
         let ip = this._settings.get_string('bitaxe-ip');
 
         if (!ip || ip === '') {
@@ -1168,8 +1218,59 @@ class BitaxeIndicator extends PanelMenu.Button {
             return;
         }
 
-        this._refreshButton.reactive = !isBusy;
-        this._refreshButton.can_focus = !isBusy;
+        const canRefresh = !isBusy && !this._isPaused;
+        this._refreshButton.reactive = canRefresh;
+        this._refreshButton.can_focus = canRefresh;
+    }
+
+    _setPaused(paused) {
+        const next = Boolean(paused);
+        if (this._isPaused === next) {
+            return;
+        }
+
+        this._isPaused = next;
+
+        if (this._isPaused) {
+            if (this._inFlight && this._cancellable) {
+                this._cancellable.cancel();
+                this._cancellable = new Gio.Cancellable();
+            }
+            this._setRefreshButtonBusy(false);
+            this._setStatValue('updatedLast', 'Paused');
+            this._updateLabel('Paused');
+        } else {
+            this._fetchStats();
+        }
+
+        this._updatePauseButtonState();
+    }
+
+    _updatePauseButtonState() {
+        if (!this._pauseButton) {
+            return;
+        }
+        this._pauseButton.label = this._isPaused ? 'Unpause' : 'Pause';
+    }
+
+    _getBitaxeWebUIUri() {
+        const configured = this._settings.get_string('bitaxe-ip').trim();
+        if (!configured) {
+            return null;
+        }
+        if (/^[a-z][a-z0-9+.-]*:\/\//i.test(configured)) {
+            return configured;
+        }
+        return `http://${configured}`;
+    }
+
+    _updateWebUIButtonState() {
+        if (!this._openWebUIButton) {
+            return;
+        }
+        const hasUri = Boolean(this._getBitaxeWebUIUri());
+        this._openWebUIButton.reactive = hasUri;
+        this._openWebUIButton.can_focus = hasUri;
     }
 
     _clearVoltageRails() {
