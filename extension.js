@@ -1282,16 +1282,6 @@ class BitaxeIndicator extends PanelMenu.Button {
 
 export default class BitaxeMonitorExtension extends Extension {
     enable() {
-        if (this._indicator) {
-            this._indicator.destroy();
-            this._indicator = null;
-        }
-
-        const existing = Main.panel.statusArea[this.uuid];
-        if (existing) {
-            existing.destroy();
-        }
-
         this._settings = this.getSettings();
         this._indicator = new BitaxeIndicator(this._settings, () => this.openPreferences());
         Main.panel.addToStatusArea(this.uuid, this._indicator);
