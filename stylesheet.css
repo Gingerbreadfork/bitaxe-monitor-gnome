@@ -39,12 +39,12 @@
 }
 
 .bitaxe-popup-column-left {
-    min-width: 300px;
+    min-width: 320px;
     padding-right: 6px;
 }
 
 .bitaxe-popup-column-right {
-    min-width: 296px;
+    min-width: 320px;
     padding-left: 8px;
 }
 
@@ -84,11 +84,11 @@
 .bitaxe-stat-label {
     font-weight: 500;
     opacity: 0.88;
-    min-width: 86px;
+    min-width: 100px;
 }
 
 .bitaxe-stat-row-left .bitaxe-stat-label {
-    width: 88px;
+    width: 100px;
 }
 
 .bitaxe-stat-value {
@@ -100,7 +100,7 @@
 }
 
 .bitaxe-stat-value-fluid {
-    min-width: 164px;
+    min-width: 180px;
 }
 
 .bitaxe-rails-box {
