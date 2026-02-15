@@ -2,9 +2,17 @@
 
 A comprehensive GNOME Shell extension for monitoring your Bitaxe mining devices. Track single devices or manage entire farms with real-time stats, sparkline graphs, and customizable displays.
 
-## Screenshot
+## Screenshots
 
-<img src="bitaxe-monitor.png" alt="Bitaxe Monitor GNOME Extension" width="300">
+<div align="center">
+  <img src="bitaxe-monitor.png" alt="Bitaxe Monitor - Single Device View" width="400">
+  <p><em>Single device view with detailed statistics and sparkline graphs</em></p>
+</div>
+
+<div align="center">
+  <img src="bitaxe-monitor-farm-view.png" alt="Bitaxe Monitor - Farm View" width="500">
+  <p><em>Farm view displaying multiple devices with customizable grid layout</em></p>
+</div>
 
 ## Features
 
