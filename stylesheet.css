@@ -245,7 +245,8 @@
 
 /* Single Device Scroll View */
 .bitaxe-single-device-scroll {
-    max-height: 500px;
+    max-height: 720px;
+    padding-right: 12px;
 }
 
 /* Farm View */

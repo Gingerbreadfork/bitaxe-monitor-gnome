@@ -770,14 +770,10 @@ class BitaxeIndicator extends PanelMenu.Button {
         // Show button only when there are multiple devices
         if (this._devices.length <= 1) {
             this._selectViewButton.visible = false;
-            if (this._viewLabel) {
-                this._viewLabel.text = '';
-            }
-            return;
+        } else {
+            this._selectViewButton.visible = true;
+            this._selectViewButton.label = 'View';
         }
-
-        this._selectViewButton.visible = true;
-        this._selectViewButton.label = 'View';
 
         // Update header label to show current view
         if (this._viewLabel) {
