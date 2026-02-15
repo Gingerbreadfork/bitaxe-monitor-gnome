@@ -122,30 +122,203 @@
     width: 108px;
 }
 
-.bitaxe-sparkline-hashrate {
-    color: #4bb3fd;
+/* Colorful theme (default) */
+.bitaxe-sparkline-theme-colorful .bitaxe-sparkline-hashrate {
+    color: rgba(75, 179, 253, 0.9);
 }
 
-.bitaxe-sparkline-temp {
-    color: #ff8a3d;
+.bitaxe-sparkline-theme-colorful .bitaxe-sparkline-temp {
+    color: rgba(255, 138, 61, 0.9);
 }
 
-.bitaxe-sparkline-vrm-temp {
-    color: #ff5d5d;
+.bitaxe-sparkline-theme-colorful .bitaxe-sparkline-vrm-temp {
+    color: rgba(255, 93, 93, 0.9);
 }
 
-.bitaxe-sparkline-power {
-    color: #7ddc6f;
+.bitaxe-sparkline-theme-colorful .bitaxe-sparkline-power {
+    color: rgba(125, 220, 111, 0.9);
 }
 
-.bitaxe-sparkline-fan {
-    color: #9c7bff;
+.bitaxe-sparkline-theme-colorful .bitaxe-sparkline-fan {
+    color: rgba(156, 123, 255, 0.9);
 }
 
-.bitaxe-sparkline-efficiency {
-    color: #f0c36d;
+.bitaxe-sparkline-theme-colorful .bitaxe-sparkline-efficiency {
+    color: rgba(240, 195, 109, 0.9);
 }
 
-.bitaxe-sparkline-error-rate {
-    color: #f1549b;
+.bitaxe-sparkline-theme-colorful .bitaxe-sparkline-error-rate {
+    color: rgba(241, 84, 155, 0.9);
+}
+
+/* Monochrome theme */
+.bitaxe-sparkline-theme-monochrome .bitaxe-sparkline {
+    /* Inherits foreground color from theme */
+}
+
+/* Blue theme */
+.bitaxe-sparkline-theme-blue .bitaxe-sparkline {
+    color: rgba(100, 181, 246, 0.9);
+}
+
+/* Green theme */
+.bitaxe-sparkline-theme-green .bitaxe-sparkline {
+    color: rgba(102, 187, 106, 0.9);
+}
+
+/* Amber theme */
+.bitaxe-sparkline-theme-amber .bitaxe-sparkline {
+    color: rgba(255, 193, 7, 0.9);
+}
+
+/* Purple theme */
+.bitaxe-sparkline-theme-purple .bitaxe-sparkline {
+    color: rgba(186, 104, 200, 0.9);
+}
+
+/* Red theme */
+.bitaxe-sparkline-theme-red .bitaxe-sparkline {
+    color: rgba(239, 83, 80, 0.9);
+}
+
+/* Cyan theme */
+.bitaxe-sparkline-theme-cyan .bitaxe-sparkline {
+    color: rgba(77, 208, 225, 0.9);
+}
+
+/* Orange theme */
+.bitaxe-sparkline-theme-orange .bitaxe-sparkline {
+    color: rgba(255, 152, 0, 0.9);
+}
+
+/* Pink theme */
+.bitaxe-sparkline-theme-pink .bitaxe-sparkline {
+    color: rgba(244, 143, 177, 0.9);
+}
+
+/* Lime theme */
+.bitaxe-sparkline-theme-lime .bitaxe-sparkline {
+    color: rgba(205, 220, 57, 0.9);
+}
+
+/* Teal theme */
+.bitaxe-sparkline-theme-teal .bitaxe-sparkline {
+    color: rgba(77, 182, 172, 0.9);
+}
+
+/* Device Selector Dialog */
+.device-selector-dialog-title {
+    font-weight: bold;
+    font-size: 14pt;
+    padding: 12px;
+}
+
+.device-selector-scroll {
+    max-height: 400px;
+    min-width: 300px;
+}
+
+.device-selector-button {
+    padding: 10px 12px;
+    margin: 2px 8px;
+}
+
+.device-selector-checkmark {
+    font-weight: bold;
+    color: rgba(125, 220, 111, 0.9);
+}
+
+.device-selector-separator {
+    height: 1px;
+    margin: 6px 0;
+    background-color: rgba(255, 255, 255, 0.2);
+}
+
+/* View Label */
+.bitaxe-view-label {
+    font-size: 0.9em;
+    font-weight: 500;
+    padding: 4px 10px;
+    border-radius: 12px;
+    background-color: rgba(255, 255, 255, 0.1);
+}
+
+/* Single Device Scroll View */
+.bitaxe-single-device-scroll {
+    max-height: 500px;
+}
+
+/* Farm View */
+.bitaxe-farm-view {
+    min-width: 400px;
+    max-width: 900px;
+    max-height: 600px;
+    padding: 8px 12px;
+}
+
+.bitaxe-farm-row {
+    spacing: 8px;
+    margin-bottom: 4px;
+}
+
+.bitaxe-farm-placeholder {
+    padding: 40px 20px;
+    text-align: center;
+    opacity: 0.7;
+}
+
+.bitaxe-farm-card {
+    spacing: 8px;
+    padding: 12px;
+    margin: 4px;
+    border-radius: 8px;
+    background-color: rgba(255, 255, 255, 0.05);
+    min-width: 180px;
+}
+
+.bitaxe-farm-card-header {
+    spacing: 8px;
+    padding-bottom: 4px;
+}
+
+.bitaxe-farm-card-title {
+    font-weight: 700;
+    font-size: 1.05em;
+}
+
+.bitaxe-farm-status-online {
+    color: rgba(125, 220, 111, 0.9);
+    font-size: 1.2em;
+}
+
+.bitaxe-farm-status-offline {
+    color: rgba(136, 136, 136, 0.7);
+    font-size: 1.2em;
+}
+
+.bitaxe-farm-offline {
+    padding: 8px 0;
+    opacity: 0.6;
+    font-style: italic;
+}
+
+.bitaxe-farm-stats-grid {
+    spacing: 4px;
+}
+
+.bitaxe-farm-stat-row {
+    spacing: 12px;
+    padding: 2px 0;
+}
+
+.bitaxe-farm-stat-label {
+    font-weight: 500;
+    opacity: 0.85;
+    min-width: 90px;
+}
+
+.bitaxe-farm-stat-value {
+    font-weight: 600;
+    font-family: monospace;
+    font-feature-settings: "tnum";
 }

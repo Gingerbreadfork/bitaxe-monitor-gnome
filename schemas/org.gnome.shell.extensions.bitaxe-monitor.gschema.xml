@@ -73,6 +73,25 @@
       <summary>Sparkline Window</summary>
       <description>How many minutes of history to show in popup sparklines</description>
     </key>
+    <key name="sparkline-theme" type="s">
+      <default>'colorful'</default>
+      <summary>Sparkline Theme</summary>
+      <description>Color theme for sparkline graphs</description>
+      <choices>
+        <choice value='colorful'/>
+        <choice value='monochrome'/>
+        <choice value='blue'/>
+        <choice value='green'/>
+        <choice value='amber'/>
+        <choice value='purple'/>
+        <choice value='red'/>
+        <choice value='cyan'/>
+        <choice value='orange'/>
+        <choice value='pink'/>
+        <choice value='lime'/>
+        <choice value='teal'/>
+      </choices>
+    </key>
     <key name="panel-separator" type="s">
       <default>'|'</default>
       <summary>Panel Separator</summary>
@@ -100,6 +119,117 @@
         <choice value='GH/s'/>
         <choice value='TH/s'/>
       </choices>
+    </key>
+    <key name="devices-json" type="s">
+      <default>'[]'</default>
+      <summary>Devices List</summary>
+      <description>JSON array of configured Bitaxe devices with IDs, nicknames, and IPs</description>
+    </key>
+    <key name="selected-device-id" type="s">
+      <default>''</default>
+      <summary>Selected Device ID</summary>
+      <description>The ID of the currently selected device for single device view</description>
+    </key>
+    <key name="default-view" type="s">
+      <default>'auto'</default>
+      <summary>Default View</summary>
+      <description>Default popup view mode (auto, farm, or single)</description>
+      <choices>
+        <choice value='auto'/>
+        <choice value='farm'/>
+        <choice value='single'/>
+      </choices>
+    </key>
+    <key name="panel-display-mode" type="s">
+      <default>'auto'</default>
+      <summary>Panel Display Mode</summary>
+      <description>What to show on panel with multiple devices (auto, selected, or aggregate)</description>
+      <choices>
+        <choice value='auto'/>
+        <choice value='selected'/>
+        <choice value='aggregate'/>
+      </choices>
+    </key>
+    <key name="always-scroll-device-list" type="b">
+      <default>false</default>
+      <summary>Always Scroll Device List</summary>
+      <description>Always use scrollable device list in popup (even with fewer than 8 devices)</description>
+    </key>
+    <key name="farm-view-columns" type="i">
+      <default>1</default>
+      <range min="1" max="4"/>
+      <summary>Farm View Columns</summary>
+      <description>Number of device columns to display in farm view (1-4)</description>
+    </key>
+    <key name="farm-show-hashrate" type="b">
+      <default>true</default>
+      <summary>Farm: Show Hashrate</summary>
+      <description>Show hashrate in farm view device cards</description>
+    </key>
+    <key name="farm-show-asic-temp" type="b">
+      <default>true</default>
+      <summary>Farm: Show ASIC Temperature</summary>
+      <description>Show ASIC temperature in farm view device cards</description>
+    </key>
+    <key name="farm-show-vrm-temp" type="b">
+      <default>true</default>
+      <summary>Farm: Show VRM Temperature</summary>
+      <description>Show VRM temperature in farm view device cards</description>
+    </key>
+    <key name="farm-show-power" type="b">
+      <default>true</default>
+      <summary>Farm: Show Power</summary>
+      <description>Show power consumption in farm view device cards</description>
+    </key>
+    <key name="farm-show-efficiency" type="b">
+      <default>true</default>
+      <summary>Farm: Show Efficiency</summary>
+      <description>Show mining efficiency in farm view device cards</description>
+    </key>
+    <key name="farm-show-shares" type="b">
+      <default>true</default>
+      <summary>Farm: Show Shares</summary>
+      <description>Show accepted shares in farm view device cards</description>
+    </key>
+    <key name="farm-show-fan" type="b">
+      <default>false</default>
+      <summary>Farm: Show Fan RPM</summary>
+      <description>Show fan speed in farm view device cards</description>
+    </key>
+    <key name="farm-show-frequency" type="b">
+      <default>false</default>
+      <summary>Farm: Show Frequency</summary>
+      <description>Show ASIC frequency in farm view device cards</description>
+    </key>
+    <key name="farm-show-best-diff" type="b">
+      <default>false</default>
+      <summary>Farm: Show Best Difficulty</summary>
+      <description>Show best difficulty in farm view device cards</description>
+    </key>
+    <key name="farm-show-uptime" type="b">
+      <default>false</default>
+      <summary>Farm: Show Uptime</summary>
+      <description>Show device uptime in farm view device cards</description>
+    </key>
+    <key name="farm-show-pool" type="b">
+      <default>false</default>
+      <summary>Farm: Show Pool</summary>
+      <description>Show mining pool in farm view device cards</description>
+    </key>
+    <key name="farm-show-error-rate" type="b">
+      <default>false</default>
+      <summary>Farm: Show Error Rate</summary>
+      <description>Show error rate percentage in farm view device cards</description>
+    </key>
+    <key name="farm-show-model" type="b">
+      <default>false</default>
+      <summary>Farm: Show Model</summary>
+      <description>Show ASIC model in farm view device cards</description>
+    </key>
+    <key name="farm-show-voltage" type="b">
+      <default>false</default>
+      <summary>Farm: Show Voltage</summary>
+      <description>Show voltage in farm view device cards</description>
     </key>
   </schema>
 </schemalist>

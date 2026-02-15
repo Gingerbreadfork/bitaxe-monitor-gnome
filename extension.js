@@ -8,6 +8,7 @@ import Pango from 'gi://Pango';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
+import * as ModalDialog from 'resource:///org/gnome/shell/ui/modalDialog.js';
 import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 
 const SPARKLINE_WIDTH = 88;
@@ -15,7 +16,7 @@ const SPARKLINE_HEIGHT = 22;
 const SPARKLINE_PADDING = 2;
 const SPARKLINE_WINDOW_DEFAULT_MINUTES = 5;
 const SPARKLINE_MAX_POINTS_HARD_CAP = 720;
-const STATUS_NO_IP = 'No IP set';
+const STATUS_NO_DEVICES = 'No devices';
 const STATUS_CONNECTING = 'Connecting...';
 const STATUS_DISCONNECTED = 'Disconnected';
 
@@ -138,8 +139,6 @@ class Sparkline {
         const latestTimestamp = this._values[this._values.length - 1].timestamp;
         const observedSpanSeconds = Math.max(0, latestTimestamp - oldestTimestamp);
 
-        // Warm-up mode: until we have a full history window, spread points
-        // over the observed range so the sparkline "fills in" naturally.
         const startTimestamp = observedSpanSeconds < this._windowSeconds
             ? oldestTimestamp
             : latestTimestamp - this._windowSeconds;
@@ -223,6 +222,103 @@ class Sparkline {
     }
 }
 
+const DeviceSelectorDialog = GObject.registerClass(
+class DeviceSelectorDialog extends ModalDialog.ModalDialog {
+    _init(devices, currentView, onSelect) {
+        super._init({styleClass: 'device-selector-dialog'});
+
+        this._devices = devices;
+        this._currentView = currentView;
+        this._onSelect = onSelect;
+
+        const title = new St.Label({
+            text: 'Select View',
+            style_class: 'device-selector-dialog-title',
+            x_align: Clutter.ActorAlign.CENTER,
+        });
+        this.contentLayout.add_child(title);
+
+        const scrollView = new St.ScrollView({
+            hscrollbar_policy: St.PolicyType.NEVER,
+            vscrollbar_policy: St.PolicyType.AUTOMATIC,
+            style_class: 'device-selector-scroll',
+        });
+
+        const listBox = new St.BoxLayout({
+            vertical: true,
+            style_class: 'device-selector-list',
+        });
+
+        // Add Farm View option
+        const farmButton = this._createDeviceButton('Farm View', 'farm', this._currentView === 'farm');
+        listBox.add_child(farmButton);
+
+        // Add separator
+        const separator = new St.Widget({
+            style_class: 'popup-separator-menu-item device-selector-separator',
+        });
+        listBox.add_child(separator);
+
+        // Add individual devices
+        for (const device of this._devices) {
+            const deviceName = device.nickname || device.ip || 'Device';
+            const isSelected = this._currentView === device.id;
+            const button = this._createDeviceButton(deviceName, device.id, isSelected);
+            listBox.add_child(button);
+        }
+
+        scrollView.add_child(listBox);
+        this.contentLayout.add_child(scrollView);
+
+        this.addButton({
+            label: 'Cancel',
+            action: () => this.close(),
+            key: Clutter.KEY_Escape,
+        });
+    }
+
+    _createDeviceButton(label, id, isSelected) {
+        const button = new St.Button({
+            style_class: 'device-selector-button',
+            can_focus: true,
+            track_hover: true,
+            x_expand: true,
+        });
+
+        const box = new St.BoxLayout({
+            x_expand: true,
+        });
+
+        const labelWidget = new St.Label({
+            text: label,
+            y_align: Clutter.ActorAlign.CENTER,
+            x_expand: true,
+        });
+
+        box.add_child(labelWidget);
+
+        if (isSelected) {
+            const checkmark = new St.Label({
+                text: '●',
+                style_class: 'device-selector-checkmark',
+                y_align: Clutter.ActorAlign.CENTER,
+            });
+            box.add_child(checkmark);
+        }
+
+        button.set_child(box);
+
+        button.connect('clicked', () => {
+            if (this._onSelect) {
+                this._onSelect(id);
+            }
+            this.close();
+        });
+
+        return button;
+    }
+});
+
 const BitaxeIndicator = GObject.registerClass(
 class BitaxeIndicator extends PanelMenu.Button {
     _init(settings, openPreferencesCallback = null) {
@@ -233,15 +329,17 @@ class BitaxeIndicator extends PanelMenu.Button {
         this._httpSession = new Soup.Session();
         this._cancellable = new Gio.Cancellable();
         this._timeoutId = null;
-        this._ipDebounceId = null;
+        this._devicesChangedDebounceId = null;
         this._inFlight = false;
-        this._stats = null;
+        this._devices = [];
+        this._deviceStats = new Map();
+        this._deviceSparklines = new Map();
         this._hasFetchedStats = false;
-        this._lastFailureLogKey = null;
-        this._sparklineSeries = new Map();
         this._pendingPanelLabelText = null;
         this._sparklineWindowSeconds = this._getSparklineWindowSeconds();
         this._isPaused = false;
+        this._currentView = 'auto'; // 'auto', 'farm', or deviceId
+        this._selectedDeviceId = null;
 
         this.add_style_class_name('bitaxe-indicator');
 
@@ -253,6 +351,7 @@ class BitaxeIndicator extends PanelMenu.Button {
         this.add_child(this._label);
 
         this._createMenuItems();
+
         this.menu.connect('open-state-changed', (_menu, isOpen) => {
             if (!isOpen && this._pendingPanelLabelText !== null) {
                 this._label.text = this._pendingPanelLabelText;
@@ -275,6 +374,7 @@ class BitaxeIndicator extends PanelMenu.Button {
             'panel-separator',
             'custom-separator',
             'hashrate-unit',
+            'panel-display-mode',
         ];
 
         for (const key of updateKeys) {
@@ -292,31 +392,121 @@ class BitaxeIndicator extends PanelMenu.Button {
         this._settingsChangedIds.push(
             this._settings.connect('changed::sparkline-window-minutes', () => this._updateSparklineWindow())
         );
-
+        this._settingsChangedIds.push(
+            this._settings.connect('changed::sparkline-theme', () => this._updateSparklineTheme())
+        );
         this._settingsChangedIds.push(
             this._settings.connect('changed::refresh-interval', () => this._refresh())
         );
         this._settingsChangedIds.push(
-            this._settings.connect('changed::bitaxe-ip', () => {
-                this._updateWebUIButtonState();
-                this._debounceRefresh();
-            })
+            this._settings.connect('changed::devices-json', () => this._debounceDevicesChanged())
+        );
+        this._settingsChangedIds.push(
+            this._settings.connect('changed::selected-device-id', () => this._onSelectedDeviceChanged())
+        );
+        this._settingsChangedIds.push(
+            this._settings.connect('changed::default-view', () => this._updateViewMode())
+        );
+        this._settingsChangedIds.push(
+            this._settings.connect('changed::farm-view-columns', () => this._updateFarmView())
         );
 
+        // Listen for farm view stats settings changes
+        const farmStatsKeys = [
+            'farm-show-hashrate',
+            'farm-show-asic-temp',
+            'farm-show-vrm-temp',
+            'farm-show-power',
+            'farm-show-voltage',
+            'farm-show-efficiency',
+            'farm-show-shares',
+            'farm-show-error-rate',
+            'farm-show-best-diff',
+            'farm-show-fan',
+            'farm-show-frequency',
+            'farm-show-pool',
+            'farm-show-uptime',
+            'farm-show-model',
+        ];
+        for (const key of farmStatsKeys) {
+            this._settingsChangedIds.push(
+                this._settings.connect(`changed::${key}`, () => this._updateFarmView())
+            );
+        }
+
+        this._loadDevices();
         this._refresh();
     }
 
     _createMenuItems() {
-        const headerItem = new PopupMenu.PopupMenuItem('Bitaxe Monitor', {
+        // Header with title and view indicator
+        const headerItem = new PopupMenu.PopupBaseMenuItem({
             reactive: false,
+            can_focus: false,
         });
-        headerItem.label.add_style_class_name('bitaxe-popup-title');
+
+        const headerBox = new St.BoxLayout({
+            x_expand: true,
+        });
+
+        const titleLabel = new St.Label({
+            text: 'Bitaxe Monitor',
+            style_class: 'bitaxe-popup-title',
+            x_expand: true,
+        });
+
+        this._viewLabel = new St.Label({
+            text: '',
+            style_class: 'bitaxe-view-label',
+            x_align: Clutter.ActorAlign.END,
+        });
+
+        headerBox.add_child(titleLabel);
+        headerBox.add_child(this._viewLabel);
+        headerItem.actor.add_child(headerBox);
         this.menu.addMenuItem(headerItem);
 
         this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
 
+        // Farm view container
+        this._farmViewContainer = new St.ScrollView({
+            style_class: 'bitaxe-farm-view',
+            hscrollbar_policy: St.PolicyType.NEVER,
+            vscrollbar_policy: St.PolicyType.AUTOMATIC,
+            overlay_scrollbars: true,
+        });
+        this._farmViewBox = new St.BoxLayout({
+            vertical: true,
+            x_expand: true,
+        });
+        this._farmViewContainer.add_child(this._farmViewBox);
+
+        const farmViewItem = new PopupMenu.PopupBaseMenuItem({
+            reactive: false,
+            can_focus: false,
+        });
+        farmViewItem.actor.add_child(this._farmViewContainer);
+        this.menu.addMenuItem(farmViewItem);
+        this._farmViewItem = farmViewItem;
+        this._farmViewItem.actor.visible = false;
+
+        // Single device view (original detailed view)
+        this._singleDeviceScrollView = new St.ScrollView({
+            style_class: 'bitaxe-single-device-scroll',
+            hscrollbar_policy: St.PolicyType.NEVER,
+            vscrollbar_policy: St.PolicyType.AUTOMATIC,
+            overlay_scrollbars: true,
+        });
+
+        this._singleDeviceContainer = new St.BoxLayout({
+            vertical: true,
+            x_expand: true,
+        });
+
         this._statValueLabels = new Map();
         this._voltageRailRows = new Map();
+        this._sparklineCells = new Map(); // Maps entry.sparkline -> St.BoxLayout cell
+        this._currentSparklineDeviceId = null; // Track which device's sparklines are currently displayed
 
         this._columnsBox = new St.BoxLayout({
             style_class: 'bitaxe-popup-columns',
@@ -342,14 +532,20 @@ class BitaxeIndicator extends PanelMenu.Button {
         this._columnsBox.add_child(this._leftColumn);
         this._columnsBox.add_child(this._columnDivider);
         this._columnsBox.add_child(this._rightColumn);
+        this._singleDeviceContainer.add_child(this._columnsBox);
+        this._singleDeviceScrollView.add_child(this._singleDeviceContainer);
 
-        const contentItem = new PopupMenu.PopupBaseMenuItem({
+        const singleDeviceItem = new PopupMenu.PopupBaseMenuItem({
             reactive: false,
             can_focus: false,
         });
-        contentItem.actor.add_style_class_name('bitaxe-popup-content');
-        contentItem.actor.add_child(this._columnsBox);
-        this.menu.addMenuItem(contentItem);
+        singleDeviceItem.actor.add_style_class_name('bitaxe-popup-content');
+        singleDeviceItem.actor.add_child(this._singleDeviceScrollView);
+        this.menu.addMenuItem(singleDeviceItem);
+        this._singleDeviceItem = singleDeviceItem;
+
+        // Apply initial sparkline theme
+        this._updateSparklineTheme();
 
         this._addSection(this._leftColumn, 'Hashrate', [
             {key: 'hashrate', label: 'Hashrate', sparkline: 'hashrate'},
@@ -421,6 +617,7 @@ class BitaxeIndicator extends PanelMenu.Button {
 
         this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
 
+        // Action buttons
         const actionsItem = new PopupMenu.PopupBaseMenuItem({
             reactive: false,
             can_focus: false,
@@ -439,7 +636,7 @@ class BitaxeIndicator extends PanelMenu.Button {
             track_hover: true,
         });
         refreshButton.connect('clicked', () => {
-            this._fetchStats();
+            this._fetchAllDevices();
         });
 
         const copyStatsButton = new St.Button({
@@ -486,7 +683,7 @@ class BitaxeIndicator extends PanelMenu.Button {
             try {
                 Gio.AppInfo.launch_default_for_uri(uri, null);
             } catch (error) {
-                logError(error, `[bitaxe-monitor] Failed to open Bitaxe Web UI: ${uri}`);
+                console.error(`[bitaxe-monitor] Failed to open Bitaxe Web UI: ${uri}`, error);
             }
         });
 
@@ -502,14 +699,28 @@ class BitaxeIndicator extends PanelMenu.Button {
             this._setPaused(!this._isPaused);
         });
 
+        const selectViewButton = new St.Button({
+            label: 'Select View',
+            style_class: 'button bitaxe-popup-action-button',
+            x_expand: true,
+            can_focus: true,
+            reactive: true,
+            track_hover: true,
+        });
+        selectViewButton.connect('clicked', () => {
+            this._openDeviceSelectorDialog();
+        });
+
         this._refreshButton = refreshButton;
         this._copyStatsButton = copyStatsButton;
         this._openWebUIButton = openWebUIButton;
         this._pauseButton = pauseButton;
+        this._selectViewButton = selectViewButton;
 
         actionsBox.add_child(refreshButton);
         actionsBox.add_child(copyStatsButton);
         actionsBox.add_child(pauseButton);
+        actionsBox.add_child(selectViewButton);
         actionsBox.add_child(openWebUIButton);
         actionsBox.add_child(settingsButton);
         actionsItem.actor.add_style_class_name('bitaxe-popup-actions-row');
@@ -520,57 +731,488 @@ class BitaxeIndicator extends PanelMenu.Button {
         this._updateWebUIButtonState();
     }
 
+    _loadDevices() {
+        const devicesJson = this._settings.get_string('devices-json');
+        try {
+            this._devices = JSON.parse(devicesJson);
+        } catch (e) {
+            this._devices = [];
+        }
+
+        // Migrate old single IP if devices list is empty
+        if (this._devices.length === 0) {
+            const oldIp = this._settings.get_string('bitaxe-ip');
+            if (oldIp && oldIp !== '') {
+                this._devices = [{
+                    id: `device-${Date.now()}`,
+                    nickname: 'My Bitaxe',
+                    ip: oldIp,
+                }];
+                this._settings.set_string('devices-json', JSON.stringify(this._devices));
+            }
+        }
+
+        this._selectedDeviceId = this._settings.get_string('selected-device-id');
+        if (!this._selectedDeviceId && this._devices.length > 0) {
+            this._selectedDeviceId = this._devices[0].id;
+            this._settings.set_string('selected-device-id', this._selectedDeviceId);
+        }
+
+        this._updateViewMode();
+        this._buildDeviceSelector();
+    }
+
+    _buildDeviceSelector() {
+        if (!this._selectViewButton) {
+            return;
+        }
+
+        // Show button only when there are multiple devices
+        if (this._devices.length <= 1) {
+            this._selectViewButton.visible = false;
+            if (this._viewLabel) {
+                this._viewLabel.text = '';
+            }
+            return;
+        }
+
+        this._selectViewButton.visible = true;
+        this._selectViewButton.label = 'View';
+
+        // Update header label to show current view
+        if (this._viewLabel) {
+            let currentViewLabel = '';
+            if (this._currentView === 'farm') {
+                currentViewLabel = 'Farm View';
+            } else {
+                const currentDevice = this._devices.find(d => d.id === this._currentView);
+                if (currentDevice) {
+                    currentViewLabel = currentDevice.nickname || currentDevice.ip || 'Device';
+                }
+            }
+            this._viewLabel.text = currentViewLabel;
+        }
+    }
+
+    _openDeviceSelectorDialog() {
+        const dialog = new DeviceSelectorDialog(
+            this._devices,
+            this._currentView,
+            (viewId) => {
+                this._switchToView(viewId);
+            }
+        );
+        dialog.open();
+    }
+
+    _switchToView(view) {
+        this._currentView = view;
+        if (view !== 'farm' && view !== 'auto') {
+            this._selectedDeviceId = view;
+            this._settings.set_string('selected-device-id', view);
+        }
+        this._buildDeviceSelector();
+        this._updateViewDisplay();
+    }
+
+    _updateViewMode() {
+        const defaultView = this._settings.get_string('default-view');
+
+        if (this._devices.length === 0) {
+            this._currentView = 'auto';
+        } else if (this._devices.length === 1) {
+            this._currentView = this._devices[0].id;
+        } else if (defaultView === 'farm') {
+            this._currentView = 'farm';
+        } else if (defaultView === 'single') {
+            this._currentView = this._selectedDeviceId || this._devices[0].id;
+        } else { // 'auto'
+            this._currentView = this._devices.length >= 2 ? 'farm' : this._devices[0].id;
+        }
+
+        this._updateViewDisplay();
+    }
+
+    _updateViewDisplay() {
+        const isFarmView = this._currentView === 'farm';
+
+        this._farmViewItem.actor.visible = isFarmView;
+        this._singleDeviceItem.actor.visible = !isFarmView;
+
+        if (isFarmView) {
+            this._updateFarmView();
+        } else {
+            this._updateSingleDeviceView();
+        }
+    }
+
+    _updateFarmView() {
+        this._farmViewBox.destroy_all_children();
+
+        if (this._devices.length === 0) {
+            const placeholder = new St.Label({
+                text: 'No devices configured.\nOpen Settings to add your Bitaxe devices.',
+                style_class: 'bitaxe-farm-placeholder',
+            });
+            this._farmViewBox.add_child(placeholder);
+            return;
+        }
+
+        const columns = Math.max(1, Math.min(4, this._settings.get_int('farm-view-columns')));
+
+        // Calculate fixed card width based on column count
+        // 900px max-width - 24px padding = 876px available
+        // Account for 8px margin per card (4px each side) and 8px spacing between cards
+        const containerWidth = 876;
+        const totalMargin = columns * 8; // 4px margin on each side per card
+        const totalSpacing = (columns - 1) * 8; // spacing between cards
+        const availableWidth = containerWidth - totalMargin - totalSpacing;
+        const cardWidth = Math.floor(availableWidth / columns);
+
+        if (columns === 1) {
+            // Single column - simple vertical layout
+            for (const device of this._devices) {
+                const deviceCard = this._createFarmDeviceCard(device);
+                this._farmViewBox.add_child(deviceCard);
+            }
+        } else {
+            // Multi-column layout
+            let currentRow = null;
+            let deviceCount = 0;
+
+            for (const device of this._devices) {
+                if (deviceCount % columns === 0) {
+                    currentRow = new St.BoxLayout({
+                        style_class: 'bitaxe-farm-row',
+                        x_expand: false,
+                    });
+                    this._farmViewBox.add_child(currentRow);
+                }
+
+                const deviceCard = this._createFarmDeviceCard(device);
+                deviceCard.set_width(cardWidth);
+                currentRow.add_child(deviceCard);
+                deviceCount++;
+            }
+        }
+    }
+
+    _createFarmDeviceCard(device) {
+        const card = new St.BoxLayout({
+            style_class: 'bitaxe-farm-card',
+            vertical: true,
+            x_expand: false,
+        });
+
+        const stats = this._deviceStats.get(device.id);
+
+        // Header with nickname
+        const header = new St.BoxLayout({
+            style_class: 'bitaxe-farm-card-header',
+            x_expand: true,
+        });
+        const nicknameLabel = new St.Label({
+            text: device.nickname || device.ip || 'Device',
+            style_class: 'bitaxe-farm-card-title',
+            x_expand: true,
+        });
+        header.add_child(nicknameLabel);
+
+        // Status indicator
+        const statusLabel = new St.Label({
+            text: stats ? '●' : '○',
+            style_class: stats ? 'bitaxe-farm-status-online' : 'bitaxe-farm-status-offline',
+        });
+        header.add_child(statusLabel);
+        card.add_child(header);
+
+        if (!stats) {
+            const offlineLabel = new St.Label({
+                text: 'Offline or connecting...',
+                style_class: 'bitaxe-farm-offline',
+            });
+            card.add_child(offlineLabel);
+            return card;
+        }
+
+        // Stats grid
+        const grid = new St.BoxLayout({
+            style_class: 'bitaxe-farm-stats-grid',
+            vertical: true,
+        });
+
+        const addRow = (label, value) => {
+            const row = new St.BoxLayout({
+                style_class: 'bitaxe-farm-stat-row',
+                x_expand: true,
+            });
+            const labelWidget = new St.Label({
+                text: label,
+                style_class: 'bitaxe-farm-stat-label',
+            });
+            const valueWidget = new St.Label({
+                text: value,
+                style_class: 'bitaxe-farm-stat-value',
+                x_expand: true,
+                x_align: Clutter.ActorAlign.END,
+            });
+            row.add_child(labelWidget);
+            row.add_child(valueWidget);
+            grid.add_child(row);
+        };
+
+        if (this._settings.get_boolean('farm-show-hashrate')) {
+            addRow('Hashrate', this._formatHashrate(this._toNumber(stats.hashRate, 0)));
+        }
+
+        if (this._settings.get_boolean('farm-show-asic-temp')) {
+            addRow('ASIC Temp', `${Math.round(this._toNumber(stats.temp, 0))}°C`);
+        }
+
+        if (this._settings.get_boolean('farm-show-vrm-temp')) {
+            addRow('VRM Temp', `${Math.round(this._toNumber(stats.vrTemp, 0))}°C`);
+        }
+
+        if (this._settings.get_boolean('farm-show-power')) {
+            addRow('Power', `${this._toNumber(stats.power, 0).toFixed(2)}W`);
+        }
+
+        if (this._settings.get_boolean('farm-show-voltage')) {
+            const voltage = this._toNumber(stats.voltage, 0);
+            addRow('Voltage', voltage > 0 ? `${voltage.toFixed(0)}mV` : '--');
+        }
+
+        if (this._settings.get_boolean('farm-show-efficiency')) {
+            const hr = this._toNumber(stats.hashRate, 0);
+            const pwr = this._toNumber(stats.power, 0);
+            let efficiency = NaN;
+            if (pwr > 0 && hr > 0) {
+                efficiency = hr / pwr;
+            }
+            addRow('Efficiency', Number.isFinite(efficiency) ? `${efficiency.toFixed(2)} GH/W` : '--');
+        }
+
+        if (this._settings.get_boolean('farm-show-shares')) {
+            addRow('Shares', `${this._toNumber(stats.sharesAccepted, 0)}`);
+        }
+
+        if (this._settings.get_boolean('farm-show-error-rate')) {
+            const errorPercentage = this._toNumber(stats.errorPercentage, 0);
+            addRow('Error Rate', `${errorPercentage.toFixed(2)}%`);
+        }
+
+        if (this._settings.get_boolean('farm-show-best-diff')) {
+            const bestDiff = this._toNumber(stats.bestDiff, 0);
+            addRow('Best Diff', this._formatDifficulty(bestDiff));
+        }
+
+        if (this._settings.get_boolean('farm-show-fan')) {
+            const fanRpm = this._toNumber(stats.fanrpm, 0);
+            addRow('Fan', fanRpm > 0 ? `${fanRpm} RPM` : '--');
+        }
+
+        if (this._settings.get_boolean('farm-show-frequency')) {
+            const frequency = this._toNumber(stats.frequency, 0);
+            addRow('Frequency', frequency > 0 ? `${frequency} MHz` : '--');
+        }
+
+        if (this._settings.get_boolean('farm-show-pool')) {
+            const pool = stats.stratumURL || '--';
+            // Shorten pool URL for compact display
+            const poolDisplay = pool.length > 30 ? pool.substring(0, 27) + '...' : pool;
+            addRow('Pool', poolDisplay);
+        }
+
+        if (this._settings.get_boolean('farm-show-uptime')) {
+            addRow('Uptime', this._formatUptime(stats.uptimeSeconds));
+        }
+
+        if (this._settings.get_boolean('farm-show-model')) {
+            const model = stats.ASICModel || '--';
+            addRow('Model', model);
+        }
+
+        card.add_child(grid);
+        return card;
+    }
+
+    _updateSingleDeviceView() {
+        const device = this._devices.find(d => d.id === this._currentView);
+        if (!device) {
+            this._clearStatsUI('No device selected');
+            return;
+        }
+
+        // Ensure sparklines are populated for this device
+        this._populateSparklineCells(device.id);
+
+        const stats = this._deviceStats.get(device.id);
+        if (!stats) {
+            this._clearStatsUI(STATUS_CONNECTING);
+            return;
+        }
+
+        this._updateSingleDeviceStats(device, stats);
+    }
+
+    _updateSingleDeviceStats(device, stats) {
+        this._setStatValue('hashrate', this._formatHashrate(this._toNumber(stats.hashRate, 0)));
+        this._setStatValue('hashrate1m', this._formatHashrate(this._toNumber(stats.hashRate_1m, 0)));
+        this._setStatValue('hashrate10m', this._formatHashrate(this._toNumber(stats.hashRate_10m, 0)));
+        this._setStatValue('hashrate1h', this._formatHashrate(this._toNumber(stats.hashRate_1h, 0)));
+
+        const errorPercentage = this._toNumber(stats.errorPercentage, 0);
+        this._setStatValue('errorRate', `${errorPercentage.toFixed(2)}%`);
+
+        const asicTemp = Math.round(this._toNumber(stats.temp, 0));
+        this._setStatValue('asicTemp', `${asicTemp}°C`);
+
+        const vrmTemp = Math.round(this._toNumber(stats.vrTemp, 0));
+        this._setStatValue('vrmTemp', `${vrmTemp}°C`);
+
+        const tempTarget = Math.round(this._toNumber(stats.temptarget, 0));
+        this._setStatValue('tempTarget', tempTarget > 0 ? `${tempTarget}°C` : '--');
+
+        const power = this._toNumber(stats.power, 0).toFixed(2);
+        this._setStatValue('power', `${power}W`);
+
+        const voltage = this._toNumber(stats.voltage, 0).toFixed(0);
+        this._setStatValue('voltage', `${voltage}mV`);
+
+        const current = this._toNumber(stats.current, 0).toFixed(0);
+        this._setStatValue('current', `${current}mA`);
+
+        const coreVoltage = this._toNumber(stats.coreVoltageActual, 0);
+        this._setStatValue('coreVoltage', coreVoltage > 0 ? `${coreVoltage}mV` : '--');
+
+        const fanRpm = this._toNumber(stats.fanrpm, NaN);
+        this._setStatValue('fan', this._formatFanRpm(fanRpm));
+
+        const frequency = this._toNumber(stats.frequency, 0);
+        this._setStatValue('frequency', this._formatFrequency(frequency));
+
+        let efficiency = this._toNumber(stats.efficiency, NaN);
+        if (!Number.isFinite(efficiency)) {
+            const hr = this._toNumber(stats.hashRate, 0);
+            const pwr = this._toNumber(stats.power, 0);
+            if (pwr > 0 && hr > 0) {
+                efficiency = hr / pwr;
+            }
+        }
+        this._setStatValue('efficiency', this._formatEfficiency(efficiency));
+
+        const overclockEnabled = this._toNumber(stats.overclockEnabled, 0);
+        this._setStatValue('overclock', overclockEnabled === 1 ? 'Enabled' : 'Disabled');
+
+        this._setStatValue('pool', stats.stratumURL || 'Not connected');
+
+        const poolDiff = this._toNumber(stats.poolDifficulty, 0);
+        this._setStatValue('poolDifficulty', this._formatDifficulty(poolDiff));
+
+        const fallbackPool = stats.fallbackStratumURL || '--';
+        this._setStatValue('fallbackPool', fallbackPool);
+
+        const sharesAccepted = this._toNumber(stats.sharesAccepted, 0);
+        const sharesRejected = this._toNumber(stats.sharesRejected, 0);
+        this._setStatValue('sharesAccepted', this._formatCount(sharesAccepted));
+        this._setStatValue('sharesRejected', this._formatCount(sharesRejected));
+
+        const bestDiff = this._toNumber(stats.bestDiff, 0);
+        this._setStatValue('bestDiff', this._formatDifficulty(bestDiff));
+
+        const bestSessionDiff = this._toNumber(stats.bestSessionDiff, 0);
+        this._setStatValue('bestSessionDiff', this._formatDifficulty(bestSessionDiff));
+
+        this._setStatValue('uptime', this._formatUptime(stats.uptimeSeconds));
+        this._setStatValue('model', stats.ASICModel || 'Unknown');
+        this._setStatValue('version', stats.version || 'Unknown');
+
+        const boardVersion = stats.boardVersion || '--';
+        this._setStatValue('boardVersion', boardVersion);
+
+        const ipAddress = stats.ipv4 || stats.ipAddress || '--';
+        this._setStatValue('ipAddress', ipAddress);
+
+        const ssid = stats.ssid || '--';
+        this._setStatValue('ssid', ssid);
+
+        const rssi = this._toNumber(stats.wifiRSSI, NaN);
+        this._setStatValue('wifiRssi', this._formatRssi(rssi));
+
+        const freeHeap = this._toNumber(stats.freeHeap, 0);
+        this._setStatValue('freeHeap', this._formatBytes(freeHeap));
+
+        this._updateVoltageRails(stats);
+        this._pushDeviceSparkline(device.id, 'hashrate', this._toNumber(stats.hashRate, NaN));
+        this._pushDeviceSparkline(device.id, 'error-rate', errorPercentage);
+        this._pushDeviceSparkline(device.id, 'temp', this._toNumber(stats.temp, NaN));
+        this._pushDeviceSparkline(device.id, 'vrm-temp', this._toNumber(stats.vrTemp, NaN));
+        this._pushDeviceSparkline(device.id, 'power', this._toNumber(stats.power, NaN));
+        this._pushDeviceSparkline(device.id, 'fan', fanRpm);
+        this._pushDeviceSparkline(device.id, 'efficiency', efficiency);
+        this._updateSparklineVisibility();
+        this._setStatValue('updatedLast', this._formatTimeNow());
+    }
+
     _refresh() {
         if (this._timeoutId) {
             GLib.source_remove(this._timeoutId);
             this._timeoutId = null;
         }
 
-        this._fetchStats();
+        this._fetchAllDevices();
 
-        let interval = this._settings.get_int('refresh-interval');
+        const interval = this._settings.get_int('refresh-interval');
         this._timeoutId = GLib.timeout_add_seconds(
             GLib.PRIORITY_DEFAULT,
             interval,
             () => {
                 if (!this._isPaused) {
-                    this._fetchStats();
+                    this._fetchAllDevices();
                 }
                 return GLib.SOURCE_CONTINUE;
             }
         );
     }
 
-    _debounceRefresh() {
-        if (this._ipDebounceId) {
-            GLib.source_remove(this._ipDebounceId);
-            this._ipDebounceId = null;
+    _debounceDevicesChanged() {
+        if (this._devicesChangedDebounceId) {
+            GLib.source_remove(this._devicesChangedDebounceId);
+            this._devicesChangedDebounceId = null;
         }
 
-        this._ipDebounceId = GLib.timeout_add(
+        this._devicesChangedDebounceId = GLib.timeout_add(
             GLib.PRIORITY_DEFAULT,
             500,
             () => {
-                this._ipDebounceId = null;
+                this._devicesChangedDebounceId = null;
+                this._loadDevices();
                 this._refresh();
                 return GLib.SOURCE_REMOVE;
             }
         );
     }
 
-    _fetchStats() {
+    _onSelectedDeviceChanged() {
+        this._selectedDeviceId = this._settings.get_string('selected-device-id');
+        if (this._currentView !== 'farm' && this._currentView !== 'auto') {
+            this._currentView = this._selectedDeviceId;
+            this._updateViewDisplay();
+            this._buildDeviceSelector();
+        }
+    }
+
+    _fetchAllDevices() {
         if (this._isPaused) {
             this._setRefreshButtonBusy(false);
             return;
         }
 
-        let ip = this._settings.get_string('bitaxe-ip');
-
-        if (!ip || ip === '') {
+        if (this._devices.length === 0) {
             this._hasFetchedStats = false;
-            this._lastFailureLogKey = null;
             this._setRefreshButtonBusy(false);
-            this._clearStatsUI(STATUS_NO_IP);
+            this._updateLabel(STATUS_NO_DEVICES);
+            this._updateViewDisplay();
             return;
         }
 
@@ -578,124 +1220,134 @@ class BitaxeIndicator extends PanelMenu.Button {
             this._updateLabel(STATUS_CONNECTING);
         }
 
-        let url = `http://${ip}/api/system/info`;
-        let message = Soup.Message.new('GET', url);
-
         if (this._inFlight) {
             return;
         }
 
         this._inFlight = true;
         this._setRefreshButtonBusy(true);
-        this._httpSession.send_and_read_async(
-            message,
-            GLib.PRIORITY_DEFAULT,
-            this._cancellable,
-            (session, result) => {
-                try {
-                    let bytes = session.send_and_read_finish(result);
-                    let status = message.get_status();
-                    if (status !== Soup.Status.OK) {
-                        throw new Error(`HTTP ${status}: ${message.get_reason_phrase()}`);
-                    }
 
-                    let decoder = new TextDecoder('utf-8');
-                    let response = decoder.decode(bytes.get_data());
+        const fetchPromises = this._devices.map(device => this._fetchDeviceStats(device));
 
-                    this._stats = JSON.parse(response);
-                    this._hasFetchedStats = true;
-                    this._lastFailureLogKey = null;
-                    this._updateUI();
-                } catch (e) {
-                    if (e.matches && e.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.CANCELLED)) {
-                        return;
-                    }
+        Promise.all(fetchPromises).finally(() => {
+            this._inFlight = false;
+            this._setRefreshButtonBusy(false);
+            this._hasFetchedStats = true;
+            this._updateUI();
+        });
+    }
 
-                    this._handleFetchFailure(e, ip);
-                } finally {
-                    this._inFlight = false;
-                    this._setRefreshButtonBusy(false);
-                }
+    _fetchDeviceStats(device) {
+        return new Promise((resolve) => {
+            if (!device.ip || device.ip === '') {
+                resolve(null);
+                return;
             }
-        );
-    }
 
-    _handleFetchFailure(error, ip) {
-        const expected = this._isExpectedConnectionIssue(error);
-        this._logFetchFailure(error, ip, expected);
+            const url = `http://${device.ip}/api/system/info`;
+            const message = Soup.Message.new('GET', url);
 
-        if (this._hasFetchedStats) {
-            this._clearStatsUI(STATUS_DISCONNECTED);
-        } else {
-            this._clearStatsUI(STATUS_CONNECTING);
-        }
-    }
+            this._httpSession.send_and_read_async(
+                message,
+                GLib.PRIORITY_DEFAULT,
+                this._cancellable,
+                (session, result) => {
+                    try {
+                        const bytes = session.send_and_read_finish(result);
+                        const status = message.get_status();
+                        if (status !== Soup.Status.OK) {
+                            throw new Error(`HTTP ${status}: ${message.get_reason_phrase()}`);
+                        }
 
-    _isExpectedConnectionIssue(error) {
-        if (!error) {
-            return true;
-        }
-
-        if (error instanceof SyntaxError || error.name === 'SyntaxError') {
-            return false;
-        }
-
-        let message = String(error.message || error).toLowerCase();
-        if (message.includes('http ') || message.includes('json')) {
-            return false;
-        }
-
-        return true;
-    }
-
-    _logFetchFailure(error, ip, expected) {
-        let message = String((error && error.message) ? error.message : error);
-        let key = `${expected ? 'expected' : 'unexpected'}:${message}`;
-        if (key === this._lastFailureLogKey) {
-            return;
-        }
-
-        this._lastFailureLogKey = key;
-        if (expected) {
-            log(`[bitaxe-monitor] Waiting for Bitaxe (${ip}): ${message}`);
-        } else {
-            logError(error, 'Bitaxe monitor fetch failed');
-        }
+                        const decoder = new TextDecoder('utf-8');
+                        const response = decoder.decode(bytes.get_data());
+                        const stats = JSON.parse(response);
+                        this._deviceStats.set(device.id, stats);
+                        resolve(stats);
+                    } catch (e) {
+                        if (e.matches && e.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.CANCELLED)) {
+                            resolve(null);
+                            return;
+                        }
+                        this._deviceStats.delete(device.id);
+                        resolve(null);
+                    }
+                }
+            );
+        });
     }
 
     _updateUI() {
-        if (!this._stats) {
+        this._updatePanelDisplay();
+        this._updateViewDisplay();
+        this._updateWebUIButtonState();
+    }
+
+    _updatePanelDisplay() {
+        const panelMode = this._settings.get_string('panel-display-mode');
+
+        if (this._devices.length === 0) {
+            this._updateLabel(STATUS_NO_DEVICES);
             return;
         }
 
-        let labelParts = [];
+        if (this._devices.length === 1 || panelMode === 'selected') {
+            this._updatePanelForDevice(this._selectedDeviceId || this._devices[0].id);
+        } else if (panelMode === 'aggregate') {
+            this._updatePanelAggregate();
+        } else { // 'auto'
+            if (this._devices.length === 1) {
+                this._updatePanelForDevice(this._devices[0].id);
+            } else {
+                this._updatePanelAggregate();
+            }
+        }
+    }
+
+    _updatePanelForDevice(deviceId) {
+        const device = this._devices.find(d => d.id === deviceId);
+        if (!device) {
+            this._updateLabel(STATUS_NO_DEVICES);
+            return;
+        }
+
+        const stats = this._deviceStats.get(deviceId);
+        if (!stats) {
+            const label = this._devices.length > 1
+                ? `${device.nickname || device.ip || 'Device'}: ${STATUS_CONNECTING}`
+                : STATUS_CONNECTING;
+            this._updateLabel(label);
+            return;
+        }
+
+        const labelParts = [];
+        const prefix = this._devices.length > 1 ? `${device.nickname || device.ip}: ` : '';
 
         if (this._settings.get_boolean('show-hashrate')) {
-            let hashrate = this._formatHashrate(this._toNumber(this._stats.hashRate, 0));
+            const hashrate = this._formatHashrate(this._toNumber(stats.hashRate, 0));
             labelParts.push(hashrate);
         }
 
         if (this._settings.get_boolean('show-temperature')) {
-            // Always prioritize ASIC temp for panel display
-            let asicTemp = Math.round(this._toNumber(this._stats.temp, 0));
+            const asicTemp = Math.round(this._toNumber(stats.temp, 0));
             labelParts.push(`${asicTemp}°C`);
         }
 
         if (this._settings.get_boolean('show-vrm-temp')) {
-            let vrmTemp = Math.round(this._toNumber(this._stats.vrTemp, 0));
+            const vrmTemp = Math.round(this._toNumber(stats.vrTemp, 0));
             labelParts.push(`VRM:${vrmTemp}°C`);
         }
 
         if (this._settings.get_boolean('show-power')) {
-            let power = this._toNumber(this._stats.power, 0).toFixed(1);
+            const power = this._toNumber(stats.power, 0).toFixed(1);
             labelParts.push(`${power}W`);
         }
 
         if (this._settings.get_boolean('show-efficiency')) {
-            let efficiency = this._getStatNumber(['efficiency', 'efficiencyGHW'], NaN);
+            let efficiency = this._toNumber(stats.efficiency, NaN);
             if (!Number.isFinite(efficiency)) {
-                let hr = this._toNumber(this._stats.hashRate, 0);
-                let pwr = this._toNumber(this._stats.power, 0);
+                const hr = this._toNumber(stats.hashRate, 0);
+                const pwr = this._toNumber(stats.power, 0);
                 if (pwr > 0 && hr > 0) {
                     efficiency = hr / pwr;
                 }
@@ -706,29 +1358,29 @@ class BitaxeIndicator extends PanelMenu.Button {
         }
 
         if (this._settings.get_boolean('show-fan-rpm')) {
-            let fanRpm = this._toNumber(this._stats.fanrpm, 0);
+            const fanRpm = this._toNumber(stats.fanrpm, 0);
             if (fanRpm > 0) {
                 labelParts.push(`${fanRpm}RPM`);
             }
         }
 
         if (this._settings.get_boolean('show-frequency')) {
-            let frequency = this._toNumber(this._stats.frequency, 0);
+            const frequency = this._toNumber(stats.frequency, 0);
             if (frequency > 0) {
                 labelParts.push(`${frequency}MHz`);
             }
         }
 
         if (this._settings.get_boolean('show-shares')) {
-            let shares = this._toNumber(this._stats.sharesAccepted, 0);
+            const shares = this._toNumber(stats.sharesAccepted, 0);
             labelParts.push(`${shares}sh`);
         }
 
         if (this._settings.get_boolean('show-uptime')) {
-            let uptimeSeconds = this._toNumber(this._stats.uptimeSeconds, 0);
+            const uptimeSeconds = this._toNumber(stats.uptimeSeconds, 0);
             if (uptimeSeconds > 0) {
-                let hours = Math.floor(uptimeSeconds / 3600);
-                let minutes = Math.floor((uptimeSeconds % 3600) / 60);
+                const hours = Math.floor(uptimeSeconds / 3600);
+                const minutes = Math.floor((uptimeSeconds % 3600) / 60);
                 if (hours > 0) {
                     labelParts.push(`${hours}h${minutes}m`);
                 } else {
@@ -743,108 +1395,68 @@ class BitaxeIndicator extends PanelMenu.Button {
         }
         separator = ` ${separator} `;
 
-        let labelText = labelParts.length > 0
-            ? labelParts.join(separator)
-            : 'Bitaxe';
+        const labelText = labelParts.length > 0
+            ? prefix + labelParts.join(separator)
+            : prefix + 'Bitaxe';
 
         this._updateLabel(labelText);
+    }
 
-        this._setStatValue('hashrate', this._formatHashrate(this._toNumber(this._stats.hashRate, 0)));
-        this._setStatValue('hashrate1m', this._formatHashrate(this._toNumber(this._stats.hashRate_1m, 0)));
-        this._setStatValue('hashrate10m', this._formatHashrate(this._toNumber(this._stats.hashRate_10m, 0)));
-        this._setStatValue('hashrate1h', this._formatHashrate(this._toNumber(this._stats.hashRate_1h, 0)));
+    _updatePanelAggregate() {
+        const labelParts = [];
+        let totalHashrate = 0;
+        let totalPower = 0;
+        let avgTemp = 0;
+        let tempCount = 0;
+        let onlineCount = 0;
 
-        let errorPercentage = this._toNumber(this._stats.errorPercentage, 0);
-        this._setStatValue('errorRate', `${errorPercentage.toFixed(2)}%`);
-
-        let asicTemp = Math.round(this._toNumber(this._stats.temp, 0));
-        this._setStatValue('asicTemp', `${asicTemp}°C`);
-
-        let vrmTemp = Math.round(this._toNumber(this._stats.vrTemp, 0));
-        this._setStatValue('vrmTemp', `${vrmTemp}°C`);
-
-        let tempTarget = Math.round(this._toNumber(this._stats.temptarget, 0));
-        this._setStatValue('tempTarget', tempTarget > 0 ? `${tempTarget}°C` : '--');
-
-        let power = this._toNumber(this._stats.power, 0).toFixed(2);
-        this._setStatValue('power', `${power}W`);
-
-        let voltage = this._toNumber(this._stats.voltage, 0).toFixed(0);
-        this._setStatValue('voltage', `${voltage}mV`);
-
-        let current = this._toNumber(this._stats.current, 0).toFixed(0);
-        this._setStatValue('current', `${current}mA`);
-
-        let coreVoltage = this._toNumber(this._stats.coreVoltageActual, 0);
-        this._setStatValue('coreVoltage', coreVoltage > 0 ? `${coreVoltage}mV` : '--');
-
-        let fanRpm = this._toNumber(this._stats.fanrpm, NaN);
-        this._setStatValue('fan', this._formatFanRpm(fanRpm));
-
-        let frequency = this._toNumber(this._stats.frequency, 0);
-        this._setStatValue('frequency', this._formatFrequency(frequency));
-
-        let efficiency = this._getStatNumber(['efficiency', 'efficiencyGHW', 'efficiency_ghw', 'ghw', 'gh_per_watt', 'hashRatePerWatt'], NaN);
-        if (!Number.isFinite(efficiency)) {
-            let hr = this._toNumber(this._stats.hashRate, 0);
-            let pwr = this._toNumber(this._stats.power, 0);
-            if (pwr > 0 && hr > 0) {
-                efficiency = hr / pwr;
+        for (const device of this._devices) {
+            const stats = this._deviceStats.get(device.id);
+            if (stats) {
+                totalHashrate += this._toNumber(stats.hashRate, 0);
+                totalPower += this._toNumber(stats.power, 0);
+                const temp = this._toNumber(stats.temp, 0);
+                if (temp > 0) {
+                    avgTemp += temp;
+                    tempCount++;
+                }
+                onlineCount++;
             }
         }
-        this._setStatValue('efficiency', this._formatEfficiency(efficiency));
 
-        let overclockEnabled = this._toNumber(this._stats.overclockEnabled, 0);
-        this._setStatValue('overclock', overclockEnabled === 1 ? 'Enabled' : 'Disabled');
+        const prefix = `[${onlineCount}/${this._devices.length}] `;
 
-        this._setStatValue('pool', this._stats.stratumURL || 'Not connected');
+        if (this._settings.get_boolean('show-hashrate')) {
+            labelParts.push(this._formatHashrate(totalHashrate));
+        }
 
-        let poolDiff = this._toNumber(this._stats.poolDifficulty, 0);
-        this._setStatValue('poolDifficulty', this._formatDifficulty(poolDiff));
+        if (this._settings.get_boolean('show-temperature') && tempCount > 0) {
+            const temp = Math.round(avgTemp / tempCount);
+            labelParts.push(`${temp}°C`);
+        }
 
-        let fallbackPool = this._stats.fallbackStratumURL || '--';
-        this._setStatValue('fallbackPool', fallbackPool);
+        if (this._settings.get_boolean('show-power')) {
+            labelParts.push(`${totalPower.toFixed(1)}W`);
+        }
 
-        let sharesAccepted = this._toNumber(this._stats.sharesAccepted, 0);
-        let sharesRejected = this._toNumber(this._stats.sharesRejected, 0);
-        this._setStatValue('sharesAccepted', this._formatCount(sharesAccepted));
-        this._setStatValue('sharesRejected', this._formatCount(sharesRejected));
+        if (this._settings.get_boolean('show-efficiency')) {
+            if (totalPower > 0 && totalHashrate > 0) {
+                const efficiency = totalHashrate / totalPower;
+                labelParts.push(`${efficiency.toFixed(1)}GH/W`);
+            }
+        }
 
-        let bestDiff = this._toNumber(this._stats.bestDiff, 0);
-        this._setStatValue('bestDiff', this._formatDifficulty(bestDiff));
+        let separator = this._settings.get_string('custom-separator');
+        if (!separator || separator === '') {
+            separator = this._settings.get_string('panel-separator');
+        }
+        separator = ` ${separator} `;
 
-        let bestSessionDiff = this._toNumber(this._stats.bestSessionDiff, 0);
-        this._setStatValue('bestSessionDiff', this._formatDifficulty(bestSessionDiff));
+        const labelText = labelParts.length > 0
+            ? prefix + labelParts.join(separator)
+            : prefix + 'Bitaxe Farm';
 
-        this._setStatValue('uptime', this._formatUptime(this._stats.uptimeSeconds));
-        this._setStatValue('model', this._stats.ASICModel || 'Unknown');
-        this._setStatValue('version', this._stats.version || 'Unknown');
-
-        let boardVersion = this._stats.boardVersion || '--';
-        this._setStatValue('boardVersion', boardVersion);
-
-        let ipAddress = this._stats.ipv4 || this._stats.ipAddress || '--';
-        this._setStatValue('ipAddress', ipAddress);
-
-        let ssid = this._stats.ssid || '--';
-        this._setStatValue('ssid', ssid);
-
-        let rssi = this._toNumber(this._stats.wifiRSSI, NaN);
-        this._setStatValue('wifiRssi', this._formatRssi(rssi));
-
-        let freeHeap = this._toNumber(this._stats.freeHeap, 0);
-        this._setStatValue('freeHeap', this._formatBytes(freeHeap));
-
-        this._updateVoltageRails();
-        this._pushSparkline('hashrate', this._toNumber(this._stats.hashRate, NaN));
-        this._pushSparkline('error-rate', errorPercentage);
-        this._pushSparkline('temp', this._toNumber(this._stats.temp, NaN));
-        this._pushSparkline('vrm-temp', this._toNumber(this._stats.vrTemp, NaN));
-        this._pushSparkline('power', this._toNumber(this._stats.power, NaN));
-        this._pushSparkline('fan', fanRpm);
-        this._pushSparkline('efficiency', efficiency);
-        this._updateSparklineVisibility();
-        this._setStatValue('updatedLast', this._formatTimeNow());
+        this._updateLabel(labelText);
     }
 
     _formatTimeNow() {
@@ -857,9 +1469,8 @@ class BitaxeIndicator extends PanelMenu.Button {
             return '0 GH/s';
         }
 
-        let unit = this._settings.get_string('hashrate-unit');
+        const unit = this._settings.get_string('hashrate-unit');
 
-        // Hashrate is in GH/s from the API
         if (unit === 'TH/s') {
             return `${(hashrate / 1000).toFixed(2)} TH/s`;
         } else if (unit === 'GH/s') {
@@ -918,9 +1529,9 @@ class BitaxeIndicator extends PanelMenu.Button {
         }
 
         seconds = Math.max(0, Math.floor(seconds));
-        let days = Math.floor(seconds / 86400);
-        let hours = Math.floor((seconds % 86400) / 3600);
-        let minutes = Math.floor((seconds % 3600) / 60);
+        const days = Math.floor(seconds / 86400);
+        const hours = Math.floor((seconds % 86400) / 3600);
+        const minutes = Math.floor((seconds % 3600) / 60);
 
         if (days > 0) {
             return `${days}d ${hours}h ${minutes}m`;
@@ -936,7 +1547,6 @@ class BitaxeIndicator extends PanelMenu.Button {
             return '--';
         }
 
-        // Format large numbers with K, M, B, T suffixes
         if (value >= 1e12) {
             return `${(value / 1e12).toFixed(2)}T`;
         } else if (value >= 1e9) {
@@ -954,7 +1564,6 @@ class BitaxeIndicator extends PanelMenu.Button {
             return '--';
         }
 
-        // Convert bytes to appropriate unit
         if (value >= 1024 * 1024) {
             return `${(value / (1024 * 1024)).toFixed(2)} MB`;
         } else if (value >= 1024) {
@@ -964,63 +1573,8 @@ class BitaxeIndicator extends PanelMenu.Button {
     }
 
     _toNumber(value, fallback) {
-        let num = Number(value);
+        const num = Number(value);
         return Number.isFinite(num) ? num : fallback;
-    }
-
-    _getStatValue(keys) {
-        for (let key of keys) {
-            if (this._stats && Object.prototype.hasOwnProperty.call(this._stats, key)) {
-                let value = this._stats[key];
-                if (value !== undefined && value !== null && value !== '') {
-                    return value;
-                }
-            }
-        }
-        return undefined;
-    }
-
-    _getStatNumber(keys, fallback) {
-        let value = this._getStatValue(keys);
-        return this._toNumber(value, fallback);
-    }
-
-    _getSharesValue(keys) {
-        if (this._stats && typeof this._stats.shares === 'object' && this._stats.shares !== null) {
-            for (let key of keys) {
-                if (Object.prototype.hasOwnProperty.call(this._stats.shares, key)) {
-                    return this._toNumber(this._stats.shares[key], NaN);
-                }
-            }
-        }
-
-        return this._getStatNumber(keys, NaN);
-    }
-
-    _getWifiRssi() {
-        let direct = this._getStatNumber(['wifiRSSI', 'wifi_rssi', 'rssi', 'signal', 'wifiSignal'], NaN);
-        if (Number.isFinite(direct)) {
-            return direct;
-        }
-
-        let wifi = null;
-        if (this._stats && typeof this._stats.wifi === 'object' && this._stats.wifi !== null) {
-            wifi = this._stats.wifi;
-        } else if (this._stats && typeof this._stats.wifiInfo === 'object' && this._stats.wifiInfo !== null) {
-            wifi = this._stats.wifiInfo;
-        } else if (this._stats && typeof this._stats.wlan === 'object' && this._stats.wlan !== null) {
-            wifi = this._stats.wlan;
-        }
-
-        if (wifi) {
-            for (let key of ['rssi', 'RSSI', 'signal', 'signalDbm', 'dbm']) {
-                if (Object.prototype.hasOwnProperty.call(wifi, key)) {
-                    return this._toNumber(wifi[key], NaN);
-                }
-            }
-        }
-
-        return NaN;
     }
 
     _formatVoltageValue(value) {
@@ -1033,28 +1587,26 @@ class BitaxeIndicator extends PanelMenu.Button {
         return `${value.toFixed(2)} V`;
     }
 
-    _getVoltageRails() {
-        if (!this._stats) {
-            return null;
+    _updateVoltageRails(stats) {
+        this._clearVoltageRails();
+
+        if (!stats) {
+            return;
         }
 
-        for (let key of ['voltageRails', 'voltage_rails', 'voltages', 'voltageMap']) {
-            if (typeof this._stats[key] === 'object' && this._stats[key] !== null) {
-                return this._stats[key];
+        let rails = null;
+        for (const key of ['voltageRails', 'voltage_rails', 'voltages', 'voltageMap']) {
+            if (typeof stats[key] === 'object' && stats[key] !== null) {
+                rails = stats[key];
+                break;
             }
         }
 
-        return null;
-    }
-
-    _updateVoltageRails() {
-        this._clearVoltageRails();
-        let rails = this._getVoltageRails();
         if (!rails) {
             return;
         }
 
-        let entries = Object.entries(rails)
+        const entries = Object.entries(rails)
             .map(([railName, value]) => [String(railName), value])
             .sort((a, b) => a[0].localeCompare(b[0]));
 
@@ -1065,15 +1617,15 @@ class BitaxeIndicator extends PanelMenu.Button {
         this._railsHeader.visible = true;
         this._voltageRailsBox.visible = true;
 
-        for (let [railName, value] of entries) {
-            let key = `rail:${railName}`;
-            let row = this._createStatRow({
+        for (const [railName, value] of entries) {
+            const key = `rail:${railName}`;
+            const row = this._createStatRow({
                 key,
                 label: `${railName} Rail`,
             });
             this._voltageRailsBox.add_child(row);
             this._voltageRailRows.set(key, row);
-            let voltageValue = this._formatVoltageValue(this._toNumber(value, NaN));
+            const voltageValue = this._formatVoltageValue(this._toNumber(value, NaN));
             this._setStatValue(key, voltageValue);
         }
     }
@@ -1088,7 +1640,7 @@ class BitaxeIndicator extends PanelMenu.Button {
     }
 
     _setStatValue(key, value) {
-        let label = this._statValueLabels.get(key);
+        const label = this._statValueLabels.get(key);
         if (label) {
             label.text = value;
         }
@@ -1103,14 +1655,14 @@ class BitaxeIndicator extends PanelMenu.Button {
     }
 
     _addSection(column, title, entries) {
-        let actors = [];
-        let header = this._createSectionHeader(title);
+        const actors = [];
+        const header = this._createSectionHeader(title);
         column.add_child(header);
         actors.push(header);
         const isLeftColumn = column === this._leftColumn;
 
-        for (let entry of entries) {
-            let row = this._createStatRow(entry, {isLeftColumn});
+        for (const entry of entries) {
+            const row = this._createStatRow(entry, {isLeftColumn});
             column.add_child(row);
             actors.push(row);
         }
@@ -1120,7 +1672,7 @@ class BitaxeIndicator extends PanelMenu.Button {
 
     _createStatRow(entry, options = {}) {
         const isLeftColumn = Boolean(options.isLeftColumn);
-        let row = new St.BoxLayout({
+        const row = new St.BoxLayout({
             style_class: 'bitaxe-stat-row',
             x_expand: true,
         });
@@ -1131,13 +1683,13 @@ class BitaxeIndicator extends PanelMenu.Button {
             row.add_style_class_name('bitaxe-stat-row-sparkline');
         }
 
-        let label = new St.Label({
+        const label = new St.Label({
             text: entry.label,
             style_class: 'bitaxe-stat-label',
             x_align: Clutter.ActorAlign.START,
         });
 
-        let value = new St.Label({
+        const value = new St.Label({
             text: '--',
             style_class: 'bitaxe-stat-value',
             x_expand: !isLeftColumn,
@@ -1158,15 +1710,20 @@ class BitaxeIndicator extends PanelMenu.Button {
                 x_align: Clutter.ActorAlign.CENTER,
             });
             if (entry.sparkline) {
-                const sparkline = this._ensureSparkline(entry.sparkline);
-                sparklineCell.add_child(sparkline.actor);
+                // Store the cell for later population
+                this._sparklineCells.set(entry.sparkline, sparklineCell);
             } else {
                 sparklineCell.add_style_class_name('bitaxe-sparkline-cell-empty');
             }
             row.add_child(sparklineCell);
         } else if (entry.sparkline) {
-            const sparkline = this._ensureSparkline(entry.sparkline);
-            row.add_child(sparkline.actor);
+            const sparklineCell = new St.BoxLayout({
+                style_class: 'bitaxe-sparkline-cell',
+                x_align: Clutter.ActorAlign.CENTER,
+            });
+            // Store the cell for later population
+            this._sparklineCells.set(entry.sparkline, sparklineCell);
+            row.add_child(sparklineCell);
         }
         row.add_child(value);
 
@@ -1175,8 +1732,18 @@ class BitaxeIndicator extends PanelMenu.Button {
         return row;
     }
 
-    _ensureSparkline(key) {
-        let sparkline = this._sparklineSeries.get(key);
+    _ensureDeviceSparkline(deviceId, key) {
+        if (!deviceId || deviceId === 'farm' || deviceId === 'auto') {
+            return null;
+        }
+
+        let deviceSparklines = this._deviceSparklines.get(deviceId);
+        if (!deviceSparklines) {
+            deviceSparklines = new Map();
+            this._deviceSparklines.set(deviceId, deviceSparklines);
+        }
+
+        let sparkline = deviceSparklines.get(key);
         if (!sparkline) {
             sparkline = new Sparkline({
                 styleClass: `bitaxe-sparkline bitaxe-sparkline-${key}`,
@@ -1184,13 +1751,45 @@ class BitaxeIndicator extends PanelMenu.Button {
                 maxPoints: SPARKLINE_MAX_POINTS_HARD_CAP,
             });
             sparkline.actor.visible = this._settings.get_boolean('show-sparklines');
-            this._sparklineSeries.set(key, sparkline);
+            deviceSparklines.set(key, sparkline);
         }
         return sparkline;
     }
 
-    _pushSparkline(key, value) {
-        const sparkline = this._sparklineSeries.get(key);
+    _populateSparklineCells(deviceId) {
+        if (!deviceId || deviceId === 'farm' || deviceId === 'auto') {
+            return;
+        }
+
+        // If sparklines for this device are already displayed, nothing to do
+        if (this._currentSparklineDeviceId === deviceId) {
+            return;
+        }
+
+        // Remove previous sparklines from cells (without destroying them)
+        for (const [sparklineKey, cell] of this._sparklineCells.entries()) {
+            // Remove all children but don't destroy them
+            while (cell.get_n_children() > 0) {
+                const child = cell.get_first_child();
+                cell.remove_child(child);
+            }
+
+            // Create/get sparkline for this device
+            const sparkline = this._ensureDeviceSparkline(deviceId, sparklineKey);
+            if (sparkline) {
+                cell.add_child(sparkline.actor);
+            }
+        }
+
+        this._currentSparklineDeviceId = deviceId;
+    }
+
+    _pushDeviceSparkline(deviceId, key, value) {
+        const deviceSparklines = this._deviceSparklines.get(deviceId);
+        if (!deviceSparklines) {
+            return;
+        }
+        const sparkline = deviceSparklines.get(key);
         if (!sparkline) {
             return;
         }
@@ -1199,8 +1798,10 @@ class BitaxeIndicator extends PanelMenu.Button {
 
     _updateSparklineVisibility() {
         const visible = this._settings.get_boolean('show-sparklines');
-        for (const sparkline of this._sparklineSeries.values()) {
-            sparkline.actor.visible = visible;
+        for (const deviceSparklines of this._deviceSparklines.values()) {
+            for (const sparkline of deviceSparklines.values()) {
+                sparkline.actor.visible = visible;
+            }
         }
     }
 
@@ -1217,14 +1818,55 @@ class BitaxeIndicator extends PanelMenu.Button {
 
     _updateSparklineWindow() {
         this._sparklineWindowSeconds = this._getSparklineWindowSeconds();
-        for (const sparkline of this._sparklineSeries.values()) {
-            sparkline.setWindowSeconds(this._sparklineWindowSeconds);
+        for (const deviceSparklines of this._deviceSparklines.values()) {
+            for (const sparkline of deviceSparklines.values()) {
+                sparkline.setWindowSeconds(this._sparklineWindowSeconds);
+            }
         }
     }
 
     _getSparklineWindowSeconds() {
         const minutes = Math.max(1, this._settings.get_int('sparkline-window-minutes') || SPARKLINE_WINDOW_DEFAULT_MINUTES);
         return minutes * 60;
+    }
+
+    _updateSparklineTheme() {
+        if (!this._singleDeviceContainer) {
+            return;
+        }
+
+        // Remove all existing theme classes
+        const themeClasses = [
+            'bitaxe-sparkline-theme-colorful',
+            'bitaxe-sparkline-theme-monochrome',
+            'bitaxe-sparkline-theme-blue',
+            'bitaxe-sparkline-theme-green',
+            'bitaxe-sparkline-theme-amber',
+            'bitaxe-sparkline-theme-purple',
+            'bitaxe-sparkline-theme-red',
+            'bitaxe-sparkline-theme-cyan',
+            'bitaxe-sparkline-theme-orange',
+            'bitaxe-sparkline-theme-pink',
+            'bitaxe-sparkline-theme-lime',
+            'bitaxe-sparkline-theme-teal',
+        ];
+        for (const themeClass of themeClasses) {
+            if (this._singleDeviceContainer.has_style_class_name(themeClass)) {
+                this._singleDeviceContainer.remove_style_class_name(themeClass);
+            }
+        }
+
+        // Add the new theme class
+        const theme = this._settings.get_string('sparkline-theme');
+        const themeClass = `bitaxe-sparkline-theme-${theme}`;
+        this._singleDeviceContainer.add_style_class_name(themeClass);
+
+        // Force sparklines to repaint to apply new colors
+        for (const deviceSparklines of this._deviceSparklines.values()) {
+            for (const sparkline of deviceSparklines.values()) {
+                sparkline.actor.queue_repaint();
+            }
+        }
     }
 
     _setRefreshButtonBusy(isBusy) {
@@ -1249,12 +1891,13 @@ class BitaxeIndicator extends PanelMenu.Button {
             if (this._inFlight && this._cancellable) {
                 this._cancellable.cancel();
                 this._cancellable = new Gio.Cancellable();
+                this._inFlight = false;
             }
             this._setRefreshButtonBusy(false);
             this._setStatValue('updatedLast', 'Paused');
             this._updateLabel('Paused');
         } else {
-            this._fetchStats();
+            this._fetchAllDevices();
         }
 
         this._updatePauseButtonState();
@@ -1268,10 +1911,22 @@ class BitaxeIndicator extends PanelMenu.Button {
     }
 
     _getBitaxeWebUIUri() {
-        const configured = this._settings.get_string('bitaxe-ip').trim();
-        if (!configured) {
+        if (this._devices.length === 0) {
             return null;
         }
+
+        let device;
+        if (this._currentView === 'farm' || this._currentView === 'auto') {
+            device = this._devices[0];
+        } else {
+            device = this._devices.find(d => d.id === this._currentView) || this._devices[0];
+        }
+
+        if (!device || !device.ip || device.ip === '') {
+            return null;
+        }
+
+        const configured = device.ip.trim();
         if (/^[a-z][a-z0-9+.-]*:\/\//i.test(configured)) {
             return configured;
         }
@@ -1289,7 +1944,7 @@ class BitaxeIndicator extends PanelMenu.Button {
 
     _clearVoltageRails() {
         if (this._voltageRailRows) {
-            for (let [key, row] of this._voltageRailRows.entries()) {
+            for (const [key, row] of this._voltageRailRows.entries()) {
                 row.destroy();
                 this._statValueLabels.delete(key);
             }
@@ -1305,7 +1960,6 @@ class BitaxeIndicator extends PanelMenu.Button {
     }
 
     _clearStatsUI(labelText) {
-        this._stats = null;
         this._updateLabel(labelText);
 
         this._setStatValue('hashrate', '--');
@@ -1349,50 +2003,55 @@ class BitaxeIndicator extends PanelMenu.Button {
         this._setStatValue('freeHeap', '--');
 
         this._clearVoltageRails();
-        this._clearSparklines();
-    }
-
-    _clearSparklines() {
-        for (const sparkline of this._sparklineSeries.values()) {
-            sparkline.clear();
-        }
     }
 
     _formatStatsForSharing() {
-        if (!this._stats) {
+        if (this._currentView === 'farm') {
+            return this._formatFarmStatsForSharing();
+        }
+
+        const device = this._devices.find(d => d.id === this._currentView);
+        if (!device) {
+            return {
+                text: 'No device selected',
+                json: '{}',
+            };
+        }
+
+        const stats = this._deviceStats.get(device.id);
+        if (!stats) {
             return {
                 text: 'No stats available. Please wait for data to be fetched.',
                 json: '{}',
             };
         }
 
-        // Format text version for easy sharing
-        const lines = [];
-        lines.push('=== Bitaxe Stats ===');
+        return this._formatDeviceStatsForSharing(device, stats);
+    }
 
-        // Model and version
-        const model = this._stats.ASICModel || 'Unknown';
-        const version = this._stats.version || 'Unknown';
+    _formatDeviceStatsForSharing(device, stats) {
+        const lines = [];
+        lines.push(`=== ${device.nickname || device.ip || 'Bitaxe'} Stats ===`);
+
+        const model = stats.ASICModel || 'Unknown';
+        const version = stats.version || 'Unknown';
         lines.push(`Model: ${model} (v${version})`);
 
-        // Hashrate
-        const hashrate = this._formatHashrate(this._toNumber(this._stats.hashRate, 0));
-        const hashrate1m = this._formatHashrate(this._toNumber(this._stats.hashRate_1m, 0));
-        const hashrate10m = this._formatHashrate(this._toNumber(this._stats.hashRate_10m, 0));
-        const hashrate1h = this._formatHashrate(this._toNumber(this._stats.hashRate_1h, 0));
+        const hashrate = this._formatHashrate(this._toNumber(stats.hashRate, 0));
+        const hashrate1m = this._formatHashrate(this._toNumber(stats.hashRate_1m, 0));
+        const hashrate10m = this._formatHashrate(this._toNumber(stats.hashRate_10m, 0));
+        const hashrate1h = this._formatHashrate(this._toNumber(stats.hashRate_1h, 0));
         lines.push(`Hashrate: ${hashrate} (1m: ${hashrate1m}, 10m: ${hashrate10m}, 1h: ${hashrate1h})`);
 
-        // Temperature
-        const asicTemp = Math.round(this._toNumber(this._stats.temp, 0));
-        const vrmTemp = Math.round(this._toNumber(this._stats.vrTemp, 0));
+        const asicTemp = Math.round(this._toNumber(stats.temp, 0));
+        const vrmTemp = Math.round(this._toNumber(stats.vrTemp, 0));
         lines.push(`Temp: ASIC ${asicTemp}°C | VRM ${vrmTemp}°C`);
 
-        // Power and efficiency
-        const power = this._toNumber(this._stats.power, 0).toFixed(2);
-        let efficiency = this._getStatNumber(['efficiency', 'efficiencyGHW'], NaN);
+        const power = this._toNumber(stats.power, 0).toFixed(2);
+        let efficiency = this._toNumber(stats.efficiency, NaN);
         if (!Number.isFinite(efficiency)) {
-            const hr = this._toNumber(this._stats.hashRate, 0);
-            const pwr = this._toNumber(this._stats.power, 0);
+            const hr = this._toNumber(stats.hashRate, 0);
+            const pwr = this._toNumber(stats.power, 0);
             if (pwr > 0 && hr > 0) {
                 efficiency = hr / pwr;
             }
@@ -1400,37 +2059,97 @@ class BitaxeIndicator extends PanelMenu.Button {
         const effStr = Number.isFinite(efficiency) ? `${efficiency.toFixed(2)} GH/W` : '--';
         lines.push(`Power: ${power}W | Efficiency: ${effStr}`);
 
-        // Frequency
-        const frequency = this._toNumber(this._stats.frequency, 0);
+        const frequency = this._toNumber(stats.frequency, 0);
         if (frequency > 0) {
             lines.push(`Frequency: ${frequency} MHz`);
         }
 
-        // Shares
-        const sharesAccepted = this._toNumber(this._stats.sharesAccepted, 0);
-        const sharesRejected = this._toNumber(this._stats.sharesRejected, 0);
-        const errorPercentage = this._toNumber(this._stats.errorPercentage, 0).toFixed(2);
+        const sharesAccepted = this._toNumber(stats.sharesAccepted, 0);
+        const sharesRejected = this._toNumber(stats.sharesRejected, 0);
+        const errorPercentage = this._toNumber(stats.errorPercentage, 0).toFixed(2);
         lines.push(`Shares: ${sharesAccepted} accepted | ${sharesRejected} rejected (${errorPercentage}% error)`);
 
-        // Best difficulties
-        const bestDiff = this._toNumber(this._stats.bestDiff, 0);
-        const bestSessionDiff = this._toNumber(this._stats.bestSessionDiff, 0);
+        const bestDiff = this._toNumber(stats.bestDiff, 0);
+        const bestSessionDiff = this._toNumber(stats.bestSessionDiff, 0);
         if (bestDiff > 0) {
             lines.push(`Best Diff: All-Time ${this._formatDifficulty(bestDiff)} | Session ${this._formatDifficulty(bestSessionDiff)}`);
         }
 
-        // Pool
-        const pool = this._stats.stratumURL || 'Not connected';
+        const pool = stats.stratumURL || 'Not connected';
         lines.push(`Pool: ${pool}`);
 
-        // Uptime
-        const uptime = this._formatUptime(this._stats.uptimeSeconds);
+        const uptime = this._formatUptime(stats.uptimeSeconds);
         lines.push(`Uptime: ${uptime}`);
 
         const textOutput = lines.join('\n');
+        const jsonOutput = JSON.stringify(stats, null, 2);
 
-        // Format JSON version (complete stats)
-        const jsonOutput = JSON.stringify(this._stats, null, 2);
+        return {
+            text: textOutput,
+            json: jsonOutput,
+        };
+    }
+
+    _formatFarmStatsForSharing() {
+        const lines = [];
+        lines.push('=== Bitaxe Farm Stats ===');
+        lines.push(`Devices: ${this._devices.length} (${this._deviceStats.size} online)`);
+        lines.push('');
+
+        let totalHashrate = 0;
+        let totalPower = 0;
+        let totalShares = 0;
+
+        for (const device of this._devices) {
+            const stats = this._deviceStats.get(device.id);
+            if (stats) {
+                totalHashrate += this._toNumber(stats.hashRate, 0);
+                totalPower += this._toNumber(stats.power, 0);
+                totalShares += this._toNumber(stats.sharesAccepted, 0);
+            }
+
+            const deviceName = device.nickname || device.ip || 'Device';
+            lines.push(`--- ${deviceName} ---`);
+
+            if (!stats) {
+                lines.push('  Status: Offline');
+                lines.push('');
+                continue;
+            }
+
+            lines.push(`  Hashrate: ${this._formatHashrate(this._toNumber(stats.hashRate, 0))}`);
+            lines.push(`  Temp: ${Math.round(this._toNumber(stats.temp, 0))}°C`);
+            lines.push(`  Power: ${this._toNumber(stats.power, 0).toFixed(2)}W`);
+
+            const hr = this._toNumber(stats.hashRate, 0);
+            const pwr = this._toNumber(stats.power, 0);
+            if (pwr > 0 && hr > 0) {
+                const eff = hr / pwr;
+                lines.push(`  Efficiency: ${eff.toFixed(2)} GH/W`);
+            }
+
+            lines.push(`  Shares: ${this._toNumber(stats.sharesAccepted, 0)}`);
+            lines.push('');
+        }
+
+        lines.push('=== Farm Totals ===');
+        lines.push(`Total Hashrate: ${this._formatHashrate(totalHashrate)}`);
+        lines.push(`Total Power: ${totalPower.toFixed(2)}W`);
+        if (totalPower > 0 && totalHashrate > 0) {
+            const farmEff = totalHashrate / totalPower;
+            lines.push(`Average Efficiency: ${farmEff.toFixed(2)} GH/W`);
+        }
+        lines.push(`Total Shares: ${totalShares}`);
+
+        const textOutput = lines.join('\n');
+        const jsonOutput = JSON.stringify({
+            devices: this._devices.map(d => ({
+                id: d.id,
+                nickname: d.nickname,
+                ip: d.ip,
+                stats: this._deviceStats.get(d.id) || null,
+            })),
+        }, null, 2);
 
         return {
             text: textOutput,
@@ -1440,25 +2159,16 @@ class BitaxeIndicator extends PanelMenu.Button {
 
     _copyStatsToClipboard() {
         const formatted = this._formatStatsForSharing();
-
-        // Use text format by default (more readable for Discord/Telegram)
         const clipboardText = formatted.text;
 
-        // Get clipboard
         const clipboard = St.Clipboard.get_default();
-
-        // Copy to clipboard (use CLIPBOARD type for Ctrl+V, not just PRIMARY selection)
         clipboard.set_text(St.ClipboardType.CLIPBOARD, clipboardText);
-
-        // Optional: Also copy to primary selection (for middle-click paste)
         clipboard.set_text(St.ClipboardType.PRIMARY, clipboardText);
 
-        // Provide visual feedback by briefly changing button label
         if (this._copyStatsButton) {
             const originalLabel = this._copyStatsButton.label;
             this._copyStatsButton.label = 'Copied!';
 
-            // Reset label after 2 seconds
             GLib.timeout_add(GLib.PRIORITY_DEFAULT, 2000, () => {
                 if (this._copyStatsButton) {
                     this._copyStatsButton.label = originalLabel;
@@ -1474,13 +2184,13 @@ class BitaxeIndicator extends PanelMenu.Button {
             this._timeoutId = null;
         }
 
-        if (this._ipDebounceId) {
-            GLib.source_remove(this._ipDebounceId);
-            this._ipDebounceId = null;
+        if (this._devicesChangedDebounceId) {
+            GLib.source_remove(this._devicesChangedDebounceId);
+            this._devicesChangedDebounceId = null;
         }
 
         if (this._settingsChangedIds) {
-            for (let id of this._settingsChangedIds) {
+            for (const id of this._settingsChangedIds) {
                 this._settings.disconnect(id);
             }
             this._settingsChangedIds = null;
@@ -1492,13 +2202,17 @@ class BitaxeIndicator extends PanelMenu.Button {
         }
 
         if (this._httpSession) {
-            this._httpSession.abort();
+            try {
+                this._httpSession.abort();
+            } catch (e) {
+                // Session may already be aborted, ignore
+            }
             this._httpSession = null;
         }
 
-        if (this._sparklineSeries) {
-            this._sparklineSeries.clear();
-            this._sparklineSeries = null;
+        if (this._deviceSparklines) {
+            this._deviceSparklines.clear();
+            this._deviceSparklines = null;
         }
 
         super.destroy();
