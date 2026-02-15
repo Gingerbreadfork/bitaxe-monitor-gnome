@@ -99,7 +99,8 @@ Configure which stats to display for each device in farm view:
 ## Installation
 
 ### Method 1: From GNOME Extensions Website (Recommended)
-*Coming soon - pending review*
+
+Visit [extensions.gnome.org/extension/9300/bitaxe-monitor/](https://extensions.gnome.org/extension/9300/bitaxe-monitor/) and click the toggle to install.
 
 ### Method 2: Using the Install Script
 ```bash
@@ -316,7 +317,17 @@ MIT License - see [LICENSE](LICENSE) file for details
 ## Support
 
 - **Issues**: [GitHub Issues](https://github.com/Gingerbreadfork/bitaxe-monitor-gnome/issues)
-- **Donations**: PayPal - gingerbreadfork
+
+### Support Development
+
+If this extension helps you monitor your mining operation, consider supporting its development! While your Bitaxe is out there hunting for blocks, you can help fund more features, bug fixes, and improvements to keep your monitoring smooth.
+
+Every bit helps keep this project maintained and growing with new features. Think of it as contributing to the hashrate of open-source development! ⚡
+
+- **Bitcoin**: `bc1qlezapstmtq6jm4cj6ahn0ylyyfnpz79l2zegjv`
+- **DigiByte**: `dgb1qrf5m26fjs57rs4lehdm95ycz5h8py94n3hcw2h`
+- **Bitcoin Cash**: `qqn2ymq3qwp7987cjlllgyp56dk3m7t89vu8u48sxk`
+- **PayPal**: [PayPal.me/gingerbreadfork](https://paypal.me/gingerbreadfork)
 
 ---
 
