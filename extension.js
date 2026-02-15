@@ -442,6 +442,18 @@ class BitaxeIndicator extends PanelMenu.Button {
             this._fetchStats();
         });
 
+        const copyStatsButton = new St.Button({
+            label: 'Copy Stats',
+            style_class: 'button bitaxe-popup-action-button',
+            x_expand: true,
+            can_focus: true,
+            reactive: true,
+            track_hover: true,
+        });
+        copyStatsButton.connect('clicked', () => {
+            this._copyStatsToClipboard();
+        });
+
         const settingsButton = new St.Button({
             label: 'Settings',
             style_class: 'button bitaxe-popup-action-button',
@@ -491,10 +503,12 @@ class BitaxeIndicator extends PanelMenu.Button {
         });
 
         this._refreshButton = refreshButton;
+        this._copyStatsButton = copyStatsButton;
         this._openWebUIButton = openWebUIButton;
         this._pauseButton = pauseButton;
 
         actionsBox.add_child(refreshButton);
+        actionsBox.add_child(copyStatsButton);
         actionsBox.add_child(pauseButton);
         actionsBox.add_child(openWebUIButton);
         actionsBox.add_child(settingsButton);
@@ -1341,6 +1355,116 @@ class BitaxeIndicator extends PanelMenu.Button {
     _clearSparklines() {
         for (const sparkline of this._sparklineSeries.values()) {
             sparkline.clear();
+        }
+    }
+
+    _formatStatsForSharing() {
+        if (!this._stats) {
+            return {
+                text: 'No stats available. Please wait for data to be fetched.',
+                json: '{}',
+            };
+        }
+
+        // Format text version for easy sharing
+        const lines = [];
+        lines.push('=== Bitaxe Stats ===');
+
+        // Model and version
+        const model = this._stats.ASICModel || 'Unknown';
+        const version = this._stats.version || 'Unknown';
+        lines.push(`Model: ${model} (v${version})`);
+
+        // Hashrate
+        const hashrate = this._formatHashrate(this._toNumber(this._stats.hashRate, 0));
+        const hashrate1m = this._formatHashrate(this._toNumber(this._stats.hashRate_1m, 0));
+        const hashrate10m = this._formatHashrate(this._toNumber(this._stats.hashRate_10m, 0));
+        const hashrate1h = this._formatHashrate(this._toNumber(this._stats.hashRate_1h, 0));
+        lines.push(`Hashrate: ${hashrate} (1m: ${hashrate1m}, 10m: ${hashrate10m}, 1h: ${hashrate1h})`);
+
+        // Temperature
+        const asicTemp = Math.round(this._toNumber(this._stats.temp, 0));
+        const vrmTemp = Math.round(this._toNumber(this._stats.vrTemp, 0));
+        lines.push(`Temp: ASIC ${asicTemp}°C | VRM ${vrmTemp}°C`);
+
+        // Power and efficiency
+        const power = this._toNumber(this._stats.power, 0).toFixed(2);
+        let efficiency = this._getStatNumber(['efficiency', 'efficiencyGHW'], NaN);
+        if (!Number.isFinite(efficiency)) {
+            const hr = this._toNumber(this._stats.hashRate, 0);
+            const pwr = this._toNumber(this._stats.power, 0);
+            if (pwr > 0 && hr > 0) {
+                efficiency = hr / pwr;
+            }
+        }
+        const effStr = Number.isFinite(efficiency) ? `${efficiency.toFixed(2)} GH/W` : '--';
+        lines.push(`Power: ${power}W | Efficiency: ${effStr}`);
+
+        // Frequency
+        const frequency = this._toNumber(this._stats.frequency, 0);
+        if (frequency > 0) {
+            lines.push(`Frequency: ${frequency} MHz`);
+        }
+
+        // Shares
+        const sharesAccepted = this._toNumber(this._stats.sharesAccepted, 0);
+        const sharesRejected = this._toNumber(this._stats.sharesRejected, 0);
+        const errorPercentage = this._toNumber(this._stats.errorPercentage, 0).toFixed(2);
+        lines.push(`Shares: ${sharesAccepted} accepted | ${sharesRejected} rejected (${errorPercentage}% error)`);
+
+        // Best difficulties
+        const bestDiff = this._toNumber(this._stats.bestDiff, 0);
+        const bestSessionDiff = this._toNumber(this._stats.bestSessionDiff, 0);
+        if (bestDiff > 0) {
+            lines.push(`Best Diff: All-Time ${this._formatDifficulty(bestDiff)} | Session ${this._formatDifficulty(bestSessionDiff)}`);
+        }
+
+        // Pool
+        const pool = this._stats.stratumURL || 'Not connected';
+        lines.push(`Pool: ${pool}`);
+
+        // Uptime
+        const uptime = this._formatUptime(this._stats.uptimeSeconds);
+        lines.push(`Uptime: ${uptime}`);
+
+        const textOutput = lines.join('\n');
+
+        // Format JSON version (complete stats)
+        const jsonOutput = JSON.stringify(this._stats, null, 2);
+
+        return {
+            text: textOutput,
+            json: jsonOutput,
+        };
+    }
+
+    _copyStatsToClipboard() {
+        const formatted = this._formatStatsForSharing();
+
+        // Use text format by default (more readable for Discord/Telegram)
+        const clipboardText = formatted.text;
+
+        // Get clipboard
+        const clipboard = St.Clipboard.get_default();
+
+        // Copy to clipboard (use CLIPBOARD type for Ctrl+V, not just PRIMARY selection)
+        clipboard.set_text(St.ClipboardType.CLIPBOARD, clipboardText);
+
+        // Optional: Also copy to primary selection (for middle-click paste)
+        clipboard.set_text(St.ClipboardType.PRIMARY, clipboardText);
+
+        // Provide visual feedback by briefly changing button label
+        if (this._copyStatsButton) {
+            const originalLabel = this._copyStatsButton.label;
+            this._copyStatsButton.label = 'Copied!';
+
+            // Reset label after 2 seconds
+            GLib.timeout_add(GLib.PRIORITY_DEFAULT, 2000, () => {
+                if (this._copyStatsButton) {
+                    this._copyStatsButton.label = originalLabel;
+                }
+                return GLib.SOURCE_REMOVE;
+            });
         }
     }
 
