@@ -1,6 +1,6 @@
 # Bitaxe Monitor - GNOME Extension
 
-A GNOME Shell extension that displays real-time stats from your Bitaxe mining device directly on your panel.
+A comprehensive GNOME Shell extension for monitoring your Bitaxe mining devices. Track single devices or manage entire farms with real-time stats, sparkline graphs, and customizable displays.
 
 ## Screenshot
 
@@ -8,30 +8,109 @@ A GNOME Shell extension that displays real-time stats from your Bitaxe mining de
 
 ## Features
 
-- **Real-time monitoring** of your Bitaxe device
-- **Panel display** showing hashrate, temperature, and power consumption
-- **Detailed popup menu** with additional stats including:
-  - Current, 1m, and 10m hashrate averages
-  - ASIC temperature
-  - Power consumption and voltage
-  - Fan RPM, frequency, efficiency (GH/W)
-  - Uptime and shares accepted/rejected
-  - Wi-Fi RSSI and voltage rails (when available)
-  - ASIC model and firmware version
-  - Mining pool information
-- **Customizable refresh interval** (1-60 seconds)
-- **Toggle display options** for panel stats
-- **Auto-refresh** with configurable intervals
+### Multi-Device Support
+- **Manage unlimited devices** - Add multiple Bitaxe devices with custom nicknames
+- **Farm View** - Grid layout showing all devices at once (1-4 columns)
+- **Single Device View** - Detailed statistics for individual devices
+- **Quick View Switching** - Easy toggle between farm and device views
+- **Auto Detection** - Automatically switches to farm view when 2+ devices are configured
+
+### Real-Time Monitoring
+- **Panel Display** - Live stats on your GNOME top bar
+  - Hashrate (with auto GH/s/TH/s conversion)
+  - ASIC and VRM temperatures
+  - Power consumption
+  - Mining efficiency (GH/W)
+  - Fan speed, frequency, shares, and uptime
+  - Customizable separators and display format
+
+- **Panel Display Modes**
+  - **Auto** - Shows selected device or first device
+  - **Selected Device** - Always shows your chosen device
+  - **Aggregate** - Total hashrate, power, and average temp across all devices
+
+### Detailed Statistics Popup
+- **Hashrate Metrics**
+  - Current, 1m, 10m, and 1h averages
+  - Error rate percentage
+  - Live sparkline graphs
+
+- **Temperature & Cooling**
+  - ASIC temperature with sparklines
+  - VRM temperature with sparklines
+  - Target temperature
+  - Fan RPM with sparklines
+
+- **Power & Performance**
+  - Power consumption with sparklines
+  - Voltage and current
+  - Core voltage
+  - Voltage rails (when available)
+  - Mining efficiency (GH/W) with sparklines
+
+- **Mining Stats**
+  - Pool information
+  - Pool difficulty
+  - Fallback pool
+  - Shares accepted/rejected
+  - Best difficulty (all-time and session)
+
+- **System Information**
+  - Device uptime
+  - ASIC model
+  - Firmware version
+  - Board version
+  - Last refresh timestamp
+
+- **Network Details** (toggleable)
+  - IP address
+  - Wi-Fi SSID
+  - Wi-Fi RSSI (signal strength)
+  - Free heap memory
+
+### Visual Features
+- **Interactive Sparklines** - Real-time history graphs for key metrics
+  - Configurable time window (1-60 minutes)
+  - 12 color themes (colorful, monochrome, blue, green, amber, purple, red, cyan, orange, pink, lime, teal)
+  - Smooth animations and auto-scaling
+
+### Farm View Customization
+Configure which stats to display for each device in farm view:
+- Hashrate, temperatures (ASIC/VRM), power, voltage
+- Mining efficiency, shares, error rate
+- Best difficulty, fan speed, frequency
+- Mining pool, uptime, device model
+
+### Convenience Features
+- **Pause/Resume** - Temporarily stop fetching stats
+- **Copy Stats** - Export device or farm stats to clipboard
+- **Open Web UI** - Quick access to Bitaxe web interface
+- **Refresh Now** - Manual refresh on demand
+- **Auto-Refresh** - Configurable interval (1-60 seconds)
 
 ## Installation
 
-### Method 1: Manual Installation
+### Method 1: From GNOME Extensions Website (Recommended)
+*Coming soon - pending review*
 
-1. Clone or download this repository
-2. Copy the extension directory to your GNOME extensions folder:
+### Method 2: Using the Install Script
+```bash
+git clone https://github.com/Gingerbreadfork/bitaxe-monitor-gnome.git
+cd bitaxe-monitor-gnome
+./install.sh
+```
+
+### Method 3: Manual Installation
+1. Clone or download this repository:
+   ```bash
+   git clone https://github.com/Gingerbreadfork/bitaxe-monitor-gnome.git
+   cd bitaxe-monitor-gnome
+   ```
+
+2. Copy the extension to your GNOME extensions folder:
    ```bash
    mkdir -p ~/.local/share/gnome-shell/extensions/
-   cp -r /path/to/bitaxe-monitor-gnome ~/.local/share/gnome-shell/extensions/bitaxe-monitor@gingerbreadfork.github.io
+   cp -r . ~/.local/share/gnome-shell/extensions/bitaxe-monitor@gingerbreadfork.github.io
    ```
 
 3. Compile the settings schema:
@@ -41,87 +120,196 @@ A GNOME Shell extension that displays real-time stats from your Bitaxe mining de
    ```
 
 4. Restart GNOME Shell:
-   - On X11: Press `Alt+F2`, type `r`, and press Enter
-   - On Wayland: Log out and log back in
+   - **On X11**: Press `Alt+F2`, type `r`, and press Enter
+   - **On Wayland**: Log out and log back in
 
 5. Enable the extension:
    ```bash
    gnome-extensions enable bitaxe-monitor@gingerbreadfork.github.io
    ```
 
-### Method 2: Using the Install Script
-
-```bash
-./install.sh
-```
-
 ## Configuration
 
-1. Open GNOME Extensions app or use:
+### Quick Start
+1. Open the extension preferences:
    ```bash
    gnome-extensions prefs bitaxe-monitor@gingerbreadfork.github.io
    ```
 
-2. Enter your Bitaxe IP address (e.g., `192.168.1.100`)
-3. Configure refresh interval (default: 5 seconds)
-4. Toggle which stats to display on the panel
+2. Add your Bitaxe device(s):
+   - Click **"Add Device"**
+   - Enter a nickname (e.g., "Bitaxe Gamma 1")
+   - Enter the IP address or hostname (e.g., `192.168.1.100`)
+   - Repeat for additional devices
+
+3. Customize your experience in the **Display** tab
+
+### Settings Overview
+
+#### Devices Tab
+- **Add/Remove Devices** - Manage your Bitaxe fleet
+- **Device Nicknames** - Custom names for easy identification
+- **Default View** - Choose startup view (auto/farm/single)
+- **Panel Display Mode** - Select what appears on the panel
+- **Farm View Columns** - Grid layout (1-4 columns)
+- **Farm Stats** - Toggle individual stats for farm view cards
+
+#### Display Tab
+- **Connection Settings** - Refresh interval configuration
+- **Panel Display** - Choose which stats appear on the panel
+- **Popup Settings** - Enable sparklines, configure window size
+- **Sparkline Theme** - Select from 12 color themes
+- **Network Info** - Show/hide network details
+- **Appearance** - Customize separators and hashrate units
 
 ## AxeOS API
 
-This extension uses the AxeOS API to fetch stats from your Bitaxe device. The main endpoint used is:
+This extension uses the AxeOS REST API to fetch stats from your Bitaxe devices:
 
 ```
-http://<bitaxe-ip>/api/system/info
+GET http://<bitaxe-ip>/api/system/info
 ```
 
-This returns comprehensive system information including hashrate, temperature, power consumption, and device details.
+The API returns comprehensive system information including:
+- Mining statistics (hashrate, shares, difficulty)
+- Hardware metrics (temperature, voltage, power)
+- Network information
+- Device details and firmware version
 
 ## Requirements
 
-- GNOME Shell 45, 46, 47, 48, or 49
-- A Bitaxe device running AxeOS firmware
-- Network access to your Bitaxe device
+- **GNOME Shell**: 45, 46, 47, 48, or 49
+- **Bitaxe Device**: Running AxeOS firmware
+- **Network**: Direct access to your Bitaxe device(s)
 
-Tested working on a Bitaxe Gamma 602.
+### Tested Devices
+- ✅ Bitaxe Gamma 602
+- ✅ Bitaxe Supra (community confirmed)
 
 ## Troubleshooting
 
-### Extension not showing stats
+### Extension Not Showing Stats
 
-1. Verify your Bitaxe IP address is correct in the settings
-2. Ensure your Bitaxe is accessible from your computer (try pinging it)
-3. Check the AxeOS web interface is accessible at `http://<bitaxe-ip>`
-4. Look for errors in the GNOME Shell logs:
+1. **Verify device connectivity:**
    ```bash
-   journalctl -f -o cat /usr/bin/gnome-shell
+   ping <bitaxe-ip>
+   curl http://<bitaxe-ip>/api/system/info
    ```
 
-### Extension not loading
+2. **Check device configuration:**
+   - Open extension settings
+   - Verify IP addresses are correct
+   - Ensure devices are powered on and connected
 
-1. Ensure the extension is enabled:
-   ```bash
-   gnome-extensions enable bitaxe-monitor@gingerbreadfork.github.io
-   ```
-
-2. Check for JavaScript errors:
+3. **Review GNOME Shell logs:**
    ```bash
    journalctl -f -o cat /usr/bin/gnome-shell | grep bitaxe
    ```
 
-3. Verify the schema is compiled:
+### Extension Not Loading
+
+1. **Verify extension is enabled:**
+   ```bash
+   gnome-extensions list | grep bitaxe
+   gnome-extensions enable bitaxe-monitor@gingerbreadfork.github.io
+   ```
+
+2. **Check schema compilation:**
    ```bash
    ls ~/.local/share/gnome-shell/extensions/bitaxe-monitor@gingerbreadfork.github.io/schemas/gschemas.compiled
    ```
+   If missing, compile it:
+   ```bash
+   cd ~/.local/share/gnome-shell/extensions/bitaxe-monitor@gingerbreadfork.github.io
+   glib-compile-schemas schemas/
+   ```
 
-## License
+3. **Look for JavaScript errors:**
+   ```bash
+   journalctl -f -o cat /usr/bin/gnome-shell
+   ```
 
-MIT
+### Network Issues
+
+If devices show as "Offline" or "Connecting...":
+- Ensure Bitaxe web UI is accessible at `http://<bitaxe-ip>`
+- Check firewall settings
+- Verify same network/VLAN access
+- Try increasing refresh interval in settings
+
+### Performance Issues
+
+If the extension feels sluggish with many devices:
+- Increase refresh interval (Settings → Display → Connection Settings)
+- Reduce farm view columns
+- Disable sparklines
+- Hide network info section
+
+## Tips & Best Practices
+
+### For Single Device Users
+- Panel shows detailed stats by default
+- Use sparklines to track performance trends
+- Enable all desired panel stats for quick monitoring
+
+### For Multi-Device Farms
+- Use descriptive nicknames ("Garage-1", "Office-2", etc.)
+- Enable farm view with 2-3 columns for best visibility
+- Customize farm stats to show only what matters
+- Use aggregate panel mode for total hashrate/power
+- Copy stats to clipboard for record keeping
+
+### Display Optimization
+- Monochrome sparkline theme for minimal distraction
+- 5-minute sparkline window for recent trends
+- Custom separator for cleaner panel appearance
+- TH/s unit if running high-hashrate devices
+
+## Development
+
+### Project Structure
+```
+bitaxe-monitor@gingerbreadfork.github.io/
+├── extension.js          # Main extension logic
+├── prefs.js             # Preferences window
+├── metadata.json        # Extension metadata
+├── stylesheet.css       # Custom styling
+└── schemas/
+    └── org.gnome.shell.extensions.bitaxe-monitor.gschema.xml
+```
+
+### Building
+```bash
+./package.sh
+```
+Creates a distributable ZIP file in `dist/`
 
 ## Contributing
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+Contributions are welcome! Please feel free to submit issues or pull requests.
+
+### Areas for Contribution
+- Additional AxeOS API features
+- More sparkline themes
+- Localization/translations
+- Performance optimizations
+- Bug fixes and improvements
+
+## License
+
+MIT License - see [LICENSE](LICENSE) file for details
 
 ## Credits
 
-- Built for the Bitaxe community
-- Uses the AxeOS API from the [ESP-Miner](https://github.com/bitaxeorg/ESP-Miner) project
+- **Built for the Bitaxe community**
+- Uses the AxeOS API from [ESP-Miner](https://github.com/bitaxeorg/ESP-Miner)
+- Inspired by the innovative Bitaxe hardware project
+
+## Support
+
+- **Issues**: [GitHub Issues](https://github.com/Gingerbreadfork/bitaxe-monitor-gnome/issues)
+- **Donations**: PayPal - gingerbreadfork
+
+---
+
+**Happy Mining!** ⛏️
