@@ -330,6 +330,7 @@ class BitaxeIndicator extends PanelMenu.Button {
         this._cancellable = new Gio.Cancellable();
         this._timeoutId = null;
         this._devicesChangedDebounceId = null;
+        this._copyStatsFeedbackTimeoutId = null;
         this._inFlight = false;
         this._devices = [];
         this._deviceStats = new Map();
@@ -2165,7 +2166,13 @@ class BitaxeIndicator extends PanelMenu.Button {
             const originalLabel = this._copyStatsButton.label;
             this._copyStatsButton.label = 'Copied!';
 
-            GLib.timeout_add(GLib.PRIORITY_DEFAULT, 2000, () => {
+            if (this._copyStatsFeedbackTimeoutId) {
+                GLib.source_remove(this._copyStatsFeedbackTimeoutId);
+                this._copyStatsFeedbackTimeoutId = null;
+            }
+
+            this._copyStatsFeedbackTimeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 2000, () => {
+                this._copyStatsFeedbackTimeoutId = null;
                 if (this._copyStatsButton) {
                     this._copyStatsButton.label = originalLabel;
                 }
@@ -2185,6 +2192,11 @@ class BitaxeIndicator extends PanelMenu.Button {
             this._devicesChangedDebounceId = null;
         }
 
+        if (this._copyStatsFeedbackTimeoutId) {
+            GLib.source_remove(this._copyStatsFeedbackTimeoutId);
+            this._copyStatsFeedbackTimeoutId = null;
+        }
+
         if (this._settingsChangedIds) {
             for (const id of this._settingsChangedIds) {
                 this._settings.disconnect(id);
@@ -2198,11 +2210,7 @@ class BitaxeIndicator extends PanelMenu.Button {
         }
 
         if (this._httpSession) {
-            try {
-                this._httpSession.abort();
-            } catch (e) {
-                // Session may already be aborted, ignore
-            }
+            this._httpSession.abort();
             this._httpSession = null;
         }
 
