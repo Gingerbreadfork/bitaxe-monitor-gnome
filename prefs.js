@@ -209,7 +209,7 @@ export default class BitaxeMonitorPreferences extends ExtensionPreferences {
             'panel-display-mode',
             'Panel Display',
             'What to show on the panel with multiple devices',
-            ['Auto (Selected device or first)', 'Selected Device Only', 'Aggregate (Total)'],
+            ['Auto (Aggregate Total)', 'Selected Device Only', 'Aggregate (Total)'],
             ['auto', 'selected', 'aggregate']
         );
 
@@ -446,7 +446,6 @@ export default class BitaxeMonitorPreferences extends ExtensionPreferences {
             settings.set_string('devices-json', JSON.stringify([device]));
             settings.set_string('selected-device-id', device.id);
             settings.set_string('bitaxe-ip', '');
-            console.log('[bitaxe-monitor] Migrated single IP to devices list');
         }
     }
 }

@@ -16,6 +16,7 @@ const SPARKLINE_HEIGHT = 22;
 const SPARKLINE_PADDING = 2;
 const SPARKLINE_WINDOW_DEFAULT_MINUTES = 5;
 const SPARKLINE_MAX_POINTS_HARD_CAP = 720;
+const HTTP_REQUEST_TIMEOUT_SECONDS = 10;
 const STATUS_NO_DEVICES = 'No devices';
 const STATUS_CONNECTING = 'Connecting...';
 const STATUS_DISCONNECTED = 'Disconnected';
@@ -326,12 +327,18 @@ class BitaxeIndicator extends PanelMenu.Button {
 
         this._settings = settings;
         this._openPreferences = openPreferencesCallback;
-        this._httpSession = new Soup.Session();
+        this._httpSession = new Soup.Session({
+            // Prevent one unresponsive device from stalling the full refresh loop.
+            timeout: HTTP_REQUEST_TIMEOUT_SECONDS,
+        });
         this._cancellable = new Gio.Cancellable();
         this._timeoutId = null;
         this._devicesChangedDebounceId = null;
         this._copyStatsFeedbackTimeoutId = null;
         this._inFlight = false;
+        this._fetchGeneration = 0;
+        this._activeFetchGeneration = 0;
+        this._destroyed = false;
         this._devices = [];
         this._deviceStats = new Map();
         this._deviceSparklines = new Map();
@@ -1220,6 +1227,10 @@ class BitaxeIndicator extends PanelMenu.Button {
     }
 
     _fetchAllDevices() {
+        if (this._destroyed) {
+            return;
+        }
+
         if (this._isPaused) {
             this._setRefreshButtonBusy(false);
             return;
@@ -1244,9 +1255,14 @@ class BitaxeIndicator extends PanelMenu.Button {
         this._inFlight = true;
         this._setRefreshButtonBusy(true);
 
-        const fetchPromises = this._devices.map(device => this._fetchDeviceStats(device));
+        const fetchGeneration = ++this._fetchGeneration;
+        this._activeFetchGeneration = fetchGeneration;
+        const fetchPromises = this._devices.map(device => this._fetchDeviceStats(device, fetchGeneration));
 
         Promise.all(fetchPromises).finally(() => {
+            if (this._destroyed || fetchGeneration !== this._activeFetchGeneration) {
+                return;
+            }
             this._inFlight = false;
             this._setRefreshButtonBusy(false);
             this._hasFetchedStats = true;
@@ -1254,8 +1270,13 @@ class BitaxeIndicator extends PanelMenu.Button {
         });
     }
 
-    _fetchDeviceStats(device) {
+    _fetchDeviceStats(device, fetchGeneration) {
         return new Promise((resolve) => {
+            if (this._destroyed || fetchGeneration !== this._activeFetchGeneration) {
+                resolve(null);
+                return;
+            }
+
             if (!device.ip || device.ip === '') {
                 resolve(null);
                 return;
@@ -1271,6 +1292,11 @@ class BitaxeIndicator extends PanelMenu.Button {
                 (session, result) => {
                     try {
                         const bytes = session.send_and_read_finish(result);
+                        if (this._destroyed || fetchGeneration !== this._activeFetchGeneration) {
+                            resolve(null);
+                            return;
+                        }
+
                         const status = message.get_status();
                         if (status !== Soup.Status.OK) {
                             throw new Error(`HTTP ${status}: ${message.get_reason_phrase()}`);
@@ -1286,6 +1312,10 @@ class BitaxeIndicator extends PanelMenu.Button {
                             resolve(null);
                             return;
                         }
+                        if (this._destroyed || fetchGeneration !== this._activeFetchGeneration) {
+                            resolve(null);
+                            return;
+                        }
                         this._deviceStats.delete(device.id);
                         resolve(null);
                     }
@@ -1295,6 +1325,9 @@ class BitaxeIndicator extends PanelMenu.Button {
     }
 
     _updateUI() {
+        if (this._destroyed) {
+            return;
+        }
         this._updatePanelDisplay();
         this._updateViewDisplay();
         this._updateWebUIButtonState();
@@ -1904,6 +1937,7 @@ class BitaxeIndicator extends PanelMenu.Button {
 
         if (this._isPaused) {
             if (this._inFlight && this._cancellable) {
+                this._activeFetchGeneration++;
                 this._cancellable.cancel();
                 this._cancellable = new Gio.Cancellable();
                 this._inFlight = false;
@@ -2200,6 +2234,10 @@ class BitaxeIndicator extends PanelMenu.Button {
     }
 
     destroy() {
+        this._destroyed = true;
+        this._activeFetchGeneration++;
+        this._inFlight = false;
+
         if (this._timeoutId) {
             GLib.source_remove(this._timeoutId);
             this._timeoutId = null;
