@@ -734,6 +734,7 @@ class BitaxeIndicator extends PanelMenu.Button {
 
     _loadDevices() {
         const devicesJson = this._settings.get_string('devices-json');
+        const oldIp = this._settings.get_string('bitaxe-ip');
         try {
             this._devices = JSON.parse(devicesJson);
         } catch (e) {
@@ -742,7 +743,6 @@ class BitaxeIndicator extends PanelMenu.Button {
 
         // Migrate old single IP if devices list is empty
         if (this._devices.length === 0) {
-            const oldIp = this._settings.get_string('bitaxe-ip');
             if (oldIp && oldIp !== '') {
                 this._devices = [{
                     id: `device-${Date.now()}`,
@@ -750,13 +750,33 @@ class BitaxeIndicator extends PanelMenu.Button {
                     ip: oldIp,
                 }];
                 this._settings.set_string('devices-json', JSON.stringify(this._devices));
+                // Clear legacy key so deleting all devices does not resurrect a migrated device.
+                this._settings.set_string('bitaxe-ip', '');
+            }
+        } else if (oldIp && oldIp !== '') {
+            // Clean up stale legacy setting once a devices list exists.
+            this._settings.set_string('bitaxe-ip', '');
+        }
+
+        const activeDeviceIds = new Set(this._devices.map(device => device.id));
+        for (const deviceId of this._deviceStats.keys()) {
+            if (!activeDeviceIds.has(deviceId)) {
+                this._deviceStats.delete(deviceId);
+            }
+        }
+        for (const deviceId of this._deviceSparklines.keys()) {
+            if (!activeDeviceIds.has(deviceId)) {
+                this._deviceSparklines.delete(deviceId);
             }
         }
 
         this._selectedDeviceId = this._settings.get_string('selected-device-id');
-        if (!this._selectedDeviceId && this._devices.length > 0) {
-            this._selectedDeviceId = this._devices[0].id;
-            this._settings.set_string('selected-device-id', this._selectedDeviceId);
+        if (this._devices.length > 0) {
+            const hasSelectedDevice = this._devices.some(d => d.id === this._selectedDeviceId);
+            if (!this._selectedDeviceId || !hasSelectedDevice) {
+                this._selectedDeviceId = this._devices[0].id;
+                this._settings.set_string('selected-device-id', this._selectedDeviceId);
+            }
         }
 
         this._updateViewMode();
@@ -1288,16 +1308,14 @@ class BitaxeIndicator extends PanelMenu.Button {
             return;
         }
 
-        if (this._devices.length === 1 || panelMode === 'selected') {
+        if (this._devices.length === 1) {
+            this._updatePanelForDevice(this._devices[0].id);
+        } else if (panelMode === 'selected') {
             this._updatePanelForDevice(this._selectedDeviceId || this._devices[0].id);
         } else if (panelMode === 'aggregate') {
             this._updatePanelAggregate();
         } else { // 'auto'
-            if (this._devices.length === 1) {
-                this._updatePanelForDevice(this._devices[0].id);
-            } else {
-                this._updatePanelAggregate();
-            }
+            this._updatePanelAggregate();
         }
     }
 
