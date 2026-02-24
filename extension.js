@@ -338,7 +338,6 @@ class BitaxeIndicator extends PanelMenu.Button {
         this._inFlight = false;
         this._fetchGeneration = 0;
         this._activeFetchGeneration = 0;
-        this._destroyed = false;
         this._devices = [];
         this._deviceStats = new Map();
         this._deviceSparklines = new Map();
@@ -348,6 +347,7 @@ class BitaxeIndicator extends PanelMenu.Button {
         this._isPaused = false;
         this._currentView = 'auto'; // 'auto', 'farm', or deviceId
         this._selectedDeviceId = null;
+        this._dialog = null;
 
         this.add_style_class_name('bitaxe-indicator');
 
@@ -819,14 +819,20 @@ class BitaxeIndicator extends PanelMenu.Button {
     }
 
     _openDeviceSelectorDialog() {
-        const dialog = new DeviceSelectorDialog(
+        if (this._dialog) {
+            this._dialog.close();
+        }
+        this._dialog = new DeviceSelectorDialog(
             this._devices,
             this._currentView,
             (viewId) => {
                 this._switchToView(viewId);
             }
         );
-        dialog.open();
+        this._dialog.connect('closed', () => {
+            this._dialog = null;
+        });
+        this._dialog.open();
     }
 
     _switchToView(view) {
@@ -1227,10 +1233,6 @@ class BitaxeIndicator extends PanelMenu.Button {
     }
 
     _fetchAllDevices() {
-        if (this._destroyed) {
-            return;
-        }
-
         if (this._isPaused) {
             this._setRefreshButtonBusy(false);
             return;
@@ -1260,7 +1262,7 @@ class BitaxeIndicator extends PanelMenu.Button {
         const fetchPromises = this._devices.map(device => this._fetchDeviceStats(device, fetchGeneration));
 
         Promise.all(fetchPromises).finally(() => {
-            if (this._destroyed || fetchGeneration !== this._activeFetchGeneration) {
+            if (fetchGeneration !== this._activeFetchGeneration) {
                 return;
             }
             this._inFlight = false;
@@ -1272,17 +1274,18 @@ class BitaxeIndicator extends PanelMenu.Button {
 
     _fetchDeviceStats(device, fetchGeneration) {
         return new Promise((resolve) => {
-            if (this._destroyed || fetchGeneration !== this._activeFetchGeneration) {
+            if (fetchGeneration !== this._activeFetchGeneration) {
                 resolve(null);
                 return;
             }
 
-            if (!device.ip || device.ip === '') {
+            const target = this._getDeviceTargetInfo(device);
+            if (!target) {
                 resolve(null);
                 return;
             }
 
-            const url = `http://${device.ip}/api/system/info`;
+            const url = `${target.apiBaseUri}/api/system/info`;
             const message = Soup.Message.new('GET', url);
 
             this._httpSession.send_and_read_async(
@@ -1292,7 +1295,7 @@ class BitaxeIndicator extends PanelMenu.Button {
                 (session, result) => {
                     try {
                         const bytes = session.send_and_read_finish(result);
-                        if (this._destroyed || fetchGeneration !== this._activeFetchGeneration) {
+                        if (fetchGeneration !== this._activeFetchGeneration) {
                             resolve(null);
                             return;
                         }
@@ -1312,7 +1315,7 @@ class BitaxeIndicator extends PanelMenu.Button {
                             resolve(null);
                             return;
                         }
-                        if (this._destroyed || fetchGeneration !== this._activeFetchGeneration) {
+                        if (fetchGeneration !== this._activeFetchGeneration) {
                             resolve(null);
                             return;
                         }
@@ -1325,9 +1328,6 @@ class BitaxeIndicator extends PanelMenu.Button {
     }
 
     _updateUI() {
-        if (this._destroyed) {
-            return;
-        }
         this._updatePanelDisplay();
         this._updateViewDisplay();
         this._updateWebUIButtonState();
@@ -1959,6 +1959,44 @@ class BitaxeIndicator extends PanelMenu.Button {
         this._pauseButton.label = this._isPaused ? 'Unpause' : 'Pause';
     }
 
+    _getDeviceTargetInfo(device) {
+        if (!device || typeof device.ip !== 'string') {
+            return null;
+        }
+
+        const configured = device.ip.trim();
+        if (!configured) {
+            return null;
+        }
+
+        // Allow either a raw host[:port] or an explicit http(s) URL without a path/query.
+        const explicitUrlMatch = configured.match(/^(https?):\/\/([^/?#]+)\/?$/i);
+        if (explicitUrlMatch) {
+            const scheme = explicitUrlMatch[1].toLowerCase();
+            const host = explicitUrlMatch[2];
+            if (/[\s@\\]/.test(host)) {
+                return null;
+            }
+            return {
+                apiBaseUri: `http://${host}`,
+                webUri: `${scheme}://${host}`,
+            };
+        }
+
+        if (/^[a-z][a-z0-9+.-]*:\/\//i.test(configured)) {
+            return null;
+        }
+
+        if (/[\s/?#@\\]/.test(configured)) {
+            return null;
+        }
+
+        return {
+            apiBaseUri: `http://${configured}`,
+            webUri: `http://${configured}`,
+        };
+    }
+
     _getBitaxeWebUIUri() {
         if (this._devices.length === 0) {
             return null;
@@ -1971,15 +2009,8 @@ class BitaxeIndicator extends PanelMenu.Button {
             device = this._devices.find(d => d.id === this._currentView) || this._devices[0];
         }
 
-        if (!device || !device.ip || device.ip === '') {
-            return null;
-        }
-
-        const configured = device.ip.trim();
-        if (/^[a-z][a-z0-9+.-]*:\/\//i.test(configured)) {
-            return configured;
-        }
-        return `http://${configured}`;
+        const target = this._getDeviceTargetInfo(device);
+        return target ? target.webUri : null;
     }
 
     _updateWebUIButtonState() {
@@ -2234,7 +2265,6 @@ class BitaxeIndicator extends PanelMenu.Button {
     }
 
     destroy() {
-        this._destroyed = true;
         this._activeFetchGeneration++;
         this._inFlight = false;
 
@@ -2271,8 +2301,21 @@ class BitaxeIndicator extends PanelMenu.Button {
         }
 
         if (this._deviceSparklines) {
+            for (const deviceSparklines of this._deviceSparklines.values()) {
+                for (const sparkline of deviceSparklines.values()) {
+                    if (sparkline && sparkline.actor) {
+                        sparkline.actor.destroy();
+                    }
+                }
+                deviceSparklines.clear();
+            }
             this._deviceSparklines.clear();
             this._deviceSparklines = null;
+        }
+
+        if (this._dialog) {
+            this._dialog.close();
+            this._dialog = null;
         }
 
         super.destroy();

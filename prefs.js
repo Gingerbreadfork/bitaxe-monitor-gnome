@@ -1,6 +1,5 @@
 import Adw from 'gi://Adw';
 import Gtk from 'gi://Gtk';
-import Gio from 'gi://Gio';
 import GObject from 'gi://GObject';
 import {ExtensionPreferences} from 'resource:///org/gnome/Shell/Extensions/js/extensions/prefs.js';
 
@@ -68,8 +67,6 @@ export default class BitaxeMonitorPreferences extends ExtensionPreferences {
 
         // Migrate old single IP to devices list if needed
         this._migrateSettings(settings);
-
-        window._settings = settings;
 
         // Devices Page
         const devicesPage = new Adw.PreferencesPage({
