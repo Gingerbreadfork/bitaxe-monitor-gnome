@@ -1285,7 +1285,7 @@ class BitaxeIndicator extends PanelMenu.Button {
                 return;
             }
 
-            const url = `${target.apiBaseUri}/api/system/info`;
+            const url = `${target.baseUri}/api/system/info`;
             const message = Soup.Message.new('GET', url);
 
             this._httpSession.send_and_read_async(
@@ -1978,8 +1978,7 @@ class BitaxeIndicator extends PanelMenu.Button {
                 return null;
             }
             return {
-                apiBaseUri: `http://${host}`,
-                webUri: `${scheme}://${host}`,
+                baseUri: `${scheme}://${host}`,
             };
         }
 
@@ -1992,8 +1991,7 @@ class BitaxeIndicator extends PanelMenu.Button {
         }
 
         return {
-            apiBaseUri: `http://${configured}`,
-            webUri: `http://${configured}`,
+            baseUri: `http://${configured}`,
         };
     }
 
@@ -2010,7 +2008,7 @@ class BitaxeIndicator extends PanelMenu.Button {
         }
 
         const target = this._getDeviceTargetInfo(device);
-        return target ? target.webUri : null;
+        return target ? target.baseUri : null;
     }
 
     _updateWebUIButtonState() {
