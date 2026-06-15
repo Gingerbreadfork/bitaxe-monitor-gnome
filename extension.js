@@ -5,6 +5,7 @@ import GLib from 'gi://GLib';
 import Soup from 'gi://Soup';
 import Clutter from 'gi://Clutter';
 import Pango from 'gi://Pango';
+import Cairo from 'gi://cairo';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
@@ -15,11 +16,13 @@ const SPARKLINE_WIDTH = 88;
 const SPARKLINE_HEIGHT = 22;
 const SPARKLINE_PADDING = 2;
 const SPARKLINE_WINDOW_DEFAULT_MINUTES = 5;
-const SPARKLINE_MAX_POINTS_HARD_CAP = 720;
+// Safety backstop on retained sparkline samples. Must exceed the largest
+// legitimate sample count (60 min window at a 1 s refresh = 3600) so long
+// windows at fast refresh rates are not silently truncated.
+const SPARKLINE_MAX_POINTS_HARD_CAP = 4096;
 const HTTP_REQUEST_TIMEOUT_SECONDS = 10;
 const STATUS_NO_DEVICES = 'No devices';
 const STATUS_CONNECTING = 'Connecting...';
-const STATUS_DISCONNECTED = 'Disconnected';
 
 class Sparkline {
     constructor({styleClass, windowSeconds = SPARKLINE_WINDOW_DEFAULT_MINUTES * 60, maxPoints = SPARKLINE_MAX_POINTS_HARD_CAP}) {
@@ -39,10 +42,13 @@ class Sparkline {
     setWindowSeconds(windowSeconds) {
         this._windowSeconds = Math.max(30, windowSeconds);
         this._pruneOld(this._nowSeconds());
-        this.actor.queue_repaint();
+        this._queueRepaint();
     }
 
     push(value) {
+        if (!this.actor) {
+            return;
+        }
         const now = this._nowSeconds();
         this._values.push({
             timestamp: now,
@@ -52,12 +58,26 @@ class Sparkline {
         if (this._values.length > this._maxPoints) {
             this._values.splice(0, this._values.length - this._maxPoints);
         }
-        this.actor.queue_repaint();
+        this._queueRepaint();
     }
 
     clear() {
         this._values = [];
-        this.actor.queue_repaint();
+        this._queueRepaint();
+    }
+
+    destroy() {
+        if (this.actor) {
+            this.actor.destroy();
+            this.actor = null;
+        }
+        this._values = [];
+    }
+
+    _queueRepaint() {
+        if (this.actor) {
+            this.actor.queue_repaint();
+        }
     }
 
     _nowSeconds() {
@@ -66,8 +86,12 @@ class Sparkline {
 
     _pruneOld(nowSeconds) {
         const cutoff = nowSeconds - this._windowSeconds;
-        while (this._values.length > 0 && this._values[0].timestamp < cutoff) {
-            this._values.shift();
+        let dropCount = 0;
+        while (dropCount < this._values.length && this._values[dropCount].timestamp < cutoff) {
+            dropCount++;
+        }
+        if (dropCount > 0) {
+            this._values.splice(0, dropCount);
         }
     }
 
@@ -196,8 +220,8 @@ class Sparkline {
                 cr.lineTo(segment[i][0], segment[i][1]);
             }
             cr.setLineWidth(1.4);
-            cr.setLineCap(1);
-            cr.setLineJoin(1);
+            cr.setLineCap(Cairo.LineCap.ROUND);
+            cr.setLineJoin(Cairo.LineJoin.ROUND);
             cr.setSourceRGBA(r, g, b, 0.9 * a);
             cr.stroke();
         }
@@ -276,6 +300,8 @@ class DeviceSelectorDialog extends ModalDialog.ModalDialog {
             action: () => this.close(),
             key: Clutter.KEY_Escape,
         });
+
+        this.setInitialKeyFocus(farmButton);
     }
 
     _createDeviceButton(label, id, isSelected) {
@@ -300,7 +326,7 @@ class DeviceSelectorDialog extends ModalDialog.ModalDialog {
 
         if (isSelected) {
             const checkmark = new St.Label({
-                text: '●',
+                text: '✓',
                 style_class: 'device-selector-checkmark',
                 y_align: Clutter.ActorAlign.CENTER,
             });
@@ -330,6 +356,7 @@ class BitaxeIndicator extends PanelMenu.Button {
         this._httpSession = new Soup.Session({
             // Prevent one unresponsive device from stalling the full refresh loop.
             timeout: HTTP_REQUEST_TIMEOUT_SECONDS,
+            user_agent: 'bitaxe-monitor-gnome',
         });
         this._cancellable = new Gio.Cancellable();
         this._timeoutId = null;
@@ -378,7 +405,6 @@ class BitaxeIndicator extends PanelMenu.Button {
             'show-frequency',
             'show-shares',
             'show-uptime',
-            'show-sparklines',
             'panel-separator',
             'custom-separator',
             'hashrate-unit',
@@ -404,7 +430,7 @@ class BitaxeIndicator extends PanelMenu.Button {
             this._settings.connect('changed::sparkline-theme', () => this._updateSparklineTheme())
         );
         this._settingsChangedIds.push(
-            this._settings.connect('changed::refresh-interval', () => this._refresh())
+            this._settings.connect('changed::refresh-interval', () => this._scheduleRefresh())
         );
         this._settingsChangedIds.push(
             this._settings.connect('changed::devices-json', () => this._debounceDevicesChanged())
@@ -497,6 +523,13 @@ class BitaxeIndicator extends PanelMenu.Button {
         this.menu.addMenuItem(farmViewItem);
         this._farmViewItem = farmViewItem;
         this._farmViewItem.actor.visible = false;
+
+        // Farm cards are keyed by device id so a refresh updates the value labels
+        // in place instead of tearing down and rebuilding every card each tick.
+        this._farmCards = new Map();
+        this._farmSignature = null;
+        this._farmColumns = 1;
+        this._farmCardWidth = 0;
 
         // Single device view (original detailed view)
         this._singleDeviceScrollView = new St.ScrollView({
@@ -752,7 +785,7 @@ class BitaxeIndicator extends PanelMenu.Button {
         if (this._devices.length === 0) {
             if (oldIp && oldIp !== '') {
                 this._devices = [{
-                    id: `device-${Date.now()}`,
+                    id: `device-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`,
                     nickname: 'My Bitaxe',
                     ip: oldIp,
                 }];
@@ -771,10 +804,22 @@ class BitaxeIndicator extends PanelMenu.Button {
                 this._deviceStats.delete(deviceId);
             }
         }
-        for (const deviceId of this._deviceSparklines.keys()) {
+        for (const [deviceId, sparklines] of this._deviceSparklines.entries()) {
             if (!activeDeviceIds.has(deviceId)) {
+                // Destroy the actors, not just the map entry — otherwise a removed
+                // device's sparkline can stay parented in a stat cell and leak.
+                for (const sparkline of sparklines.values()) {
+                    if (sparkline) {
+                        sparkline.destroy();
+                    }
+                }
+                sparklines.clear();
                 this._deviceSparklines.delete(deviceId);
             }
+        }
+        if (this._currentSparklineDeviceId && !activeDeviceIds.has(this._currentSparklineDeviceId)) {
+            // Its cells now hold destroyed actors; forget it so they repopulate.
+            this._currentSparklineDeviceId = null;
         }
 
         this._selectedDeviceId = this._settings.get_string('selected-device-id');
@@ -786,7 +831,29 @@ class BitaxeIndicator extends PanelMenu.Button {
             }
         }
 
-        this._updateViewMode();
+        // Preserve the user's chosen view across device-list changes. Only recompute
+        // it (from default-view) when the view would otherwise be invalid: the viewed
+        // device was removed, or the device count crossed the single/farm threshold.
+        // A nickname/IP edit or an unrelated add/remove keeps the current view.
+        const previousIds = this._knownDeviceIds;
+        const previousCount = previousIds ? previousIds.size : 0;
+        this._knownDeviceIds = activeDeviceIds;
+
+        const count = this._devices.length;
+        const crossedThreshold =
+            (previousCount <= 1 && count >= 2) ||
+            (previousCount >= 2 && count <= 1);
+        const viewStillValid =
+            !crossedThreshold &&
+            count >= 2 &&
+            (this._currentView === 'farm' ||
+             this._devices.some(device => device.id === this._currentView));
+
+        if (viewStillValid) {
+            this._updateViewDisplay();
+        } else {
+            this._updateViewMode();
+        }
         this._buildDeviceSelector();
     }
 
@@ -820,19 +887,25 @@ class BitaxeIndicator extends PanelMenu.Button {
 
     _openDeviceSelectorDialog() {
         if (this._dialog) {
-            this._dialog.close();
+            const previous = this._dialog;
+            this._dialog = null;
+            previous.destroy();
         }
-        this._dialog = new DeviceSelectorDialog(
+        const dialog = new DeviceSelectorDialog(
             this._devices,
             this._currentView,
             (viewId) => {
                 this._switchToView(viewId);
             }
         );
-        this._dialog.connect('closed', () => {
-            this._dialog = null;
+        this._dialog = dialog;
+        dialog.connect('closed', () => {
+            // Guard against a stale 'closed' nulling a newer dialog reference.
+            if (this._dialog === dialog) {
+                this._dialog = null;
+            }
         });
-        this._dialog.open();
+        dialog.open();
     }
 
     _switchToView(view) {
@@ -843,6 +916,8 @@ class BitaxeIndicator extends PanelMenu.Button {
         }
         this._buildDeviceSelector();
         this._updateViewDisplay();
+        // Keep the panel in sync immediately when "auto" mirrors the current view.
+        this._updatePanelDisplay();
     }
 
     _updateViewMode() {
@@ -856,8 +931,8 @@ class BitaxeIndicator extends PanelMenu.Button {
             this._currentView = 'farm';
         } else if (defaultView === 'single') {
             this._currentView = this._selectedDeviceId || this._devices[0].id;
-        } else { // 'auto'
-            this._currentView = this._devices.length >= 2 ? 'farm' : this._devices[0].id;
+        } else { // 'auto' — multiple devices default to the farm overview
+            this._currentView = 'farm';
         }
 
         this._updateViewDisplay();
@@ -876,8 +951,102 @@ class BitaxeIndicator extends PanelMenu.Button {
         }
     }
 
+    _getFarmStatDescriptors() {
+        const s = this._settings;
+        const descriptors = [];
+        const add = (key, label, fn) => descriptors.push({key, label, fn});
+
+        if (s.get_boolean('farm-show-hashrate')) {
+            add('hashrate', 'Hashrate', stats => this._formatHashrate(this._toNumber(stats.hashRate, 0)));
+        }
+        if (s.get_boolean('farm-show-asic-temp')) {
+            add('asic-temp', 'ASIC Temp', stats => `${Math.round(this._toNumber(stats.temp, 0))}°C`);
+        }
+        if (s.get_boolean('farm-show-vrm-temp')) {
+            add('vrm-temp', 'VRM Temp', stats => `${Math.round(this._toNumber(stats.vrTemp, 0))}°C`);
+        }
+        if (s.get_boolean('farm-show-power')) {
+            add('power', 'Power', stats => `${this._toNumber(stats.power, 0).toFixed(2)}W`);
+        }
+        if (s.get_boolean('farm-show-voltage')) {
+            add('voltage', 'Voltage', stats => {
+                const voltage = this._toNumber(stats.voltage, 0);
+                return voltage > 0 ? `${voltage.toFixed(0)}mV` : '--';
+            });
+        }
+        if (s.get_boolean('farm-show-efficiency')) {
+            add('efficiency', 'Efficiency', stats => {
+                const hr = this._toNumber(stats.hashRate, 0);
+                const pwr = this._toNumber(stats.power, 0);
+                const efficiency = (pwr > 0 && hr > 0) ? hr / pwr : NaN;
+                return Number.isFinite(efficiency) ? `${efficiency.toFixed(2)} GH/W` : '--';
+            });
+        }
+        if (s.get_boolean('farm-show-shares')) {
+            add('shares', 'Shares', stats => `${this._toNumber(stats.sharesAccepted, 0)}`);
+        }
+        if (s.get_boolean('farm-show-error-rate')) {
+            add('error-rate', 'Error Rate', stats => `${this._toNumber(stats.errorPercentage, 0).toFixed(2)}%`);
+        }
+        if (s.get_boolean('farm-show-best-diff')) {
+            add('best-diff', 'Best Diff', stats => this._formatDifficulty(this._toNumber(stats.bestDiff, 0)));
+        }
+        if (s.get_boolean('farm-show-fan')) {
+            add('fan', 'Fan', stats => {
+                const fanRpm = this._toNumber(stats.fanrpm, 0);
+                return fanRpm > 0 ? `${fanRpm} RPM` : '--';
+            });
+        }
+        if (s.get_boolean('farm-show-frequency')) {
+            add('frequency', 'Frequency', stats => {
+                const frequency = this._toNumber(stats.frequency, 0);
+                return frequency > 0 ? `${frequency} MHz` : '--';
+            });
+        }
+        if (s.get_boolean('farm-show-pool')) {
+            add('pool', 'Pool', stats => {
+                const pool = stats.stratumURL || '--';
+                // Shorten pool URL for compact display
+                return pool.length > 30 ? pool.substring(0, 27) + '...' : pool;
+            });
+        }
+        if (s.get_boolean('farm-show-uptime')) {
+            add('uptime', 'Uptime', stats => this._formatUptime(stats.uptimeSeconds));
+        }
+        if (s.get_boolean('farm-show-model')) {
+            add('model', 'Model', stats => stats.ASICModel || '--');
+        }
+
+        return descriptors;
+    }
+
     _updateFarmView() {
+        const columns = Math.max(1, Math.min(4, this._settings.get_int('farm-view-columns')));
+        const descriptors = this._getFarmStatDescriptors();
+
+        // The card layout (which devices, the column grid, and which stat rows an
+        // online card shows) depends only on these inputs. When unchanged we update
+        // the existing value labels in place rather than destroying and rebuilding
+        // every card on each refresh tick — that rebuild caused popup flicker, lost
+        // scroll position, and wasted work even while the popup was closed.
+        const signature = JSON.stringify({
+            ids: this._devices.map(device => device.id),
+            columns,
+            stats: descriptors.map(descriptor => descriptor.key),
+        });
+
+        if (signature !== this._farmSignature) {
+            this._rebuildFarmView(columns, descriptors);
+            this._farmSignature = signature;
+        } else {
+            this._refreshFarmValues(descriptors);
+        }
+    }
+
+    _rebuildFarmView(columns, descriptors) {
         this._farmViewBox.destroy_all_children();
+        this._farmCards.clear();
+        this._farmColumns = columns;
 
         if (this._devices.length === 0) {
             const placeholder = new St.Label({
@@ -888,8 +1057,6 @@ class BitaxeIndicator extends PanelMenu.Button {
             return;
         }
 
-        const columns = Math.max(1, Math.min(4, this._settings.get_int('farm-view-columns')));
-
         // Calculate fixed card width based on column count
         // 900px max-width - 24px padding = 876px available
         // Account for 8px margin per card (4px each side) and 8px spacing between cards
@@ -897,13 +1064,12 @@ class BitaxeIndicator extends PanelMenu.Button {
         const totalMargin = columns * 8; // 4px margin on each side per card
         const totalSpacing = (columns - 1) * 8; // spacing between cards
         const availableWidth = containerWidth - totalMargin - totalSpacing;
-        const cardWidth = Math.floor(availableWidth / columns);
+        this._farmCardWidth = Math.floor(availableWidth / columns);
 
         if (columns === 1) {
             // Single column - simple vertical layout
             for (const device of this._devices) {
-                const deviceCard = this._createFarmDeviceCard(device);
-                this._farmViewBox.add_child(deviceCard);
+                this._farmViewBox.add_child(this._createFarmDeviceCard(device, descriptors));
             }
         } else {
             // Multi-column layout
@@ -919,15 +1085,59 @@ class BitaxeIndicator extends PanelMenu.Button {
                     this._farmViewBox.add_child(currentRow);
                 }
 
-                const deviceCard = this._createFarmDeviceCard(device);
-                deviceCard.set_width(cardWidth);
+                const deviceCard = this._createFarmDeviceCard(device, descriptors);
+                deviceCard.set_width(this._farmCardWidth);
                 currentRow.add_child(deviceCard);
                 deviceCount++;
             }
         }
     }
 
-    _createFarmDeviceCard(device) {
+    _refreshFarmValues(descriptors) {
+        for (const device of this._devices) {
+            const entry = this._farmCards.get(device.id);
+            if (!entry) {
+                continue;
+            }
+
+            const stats = this._deviceStats.get(device.id);
+            if (Boolean(stats) !== entry.hasStats) {
+                // Online/offline transition changes the card's structure (stats grid
+                // vs. offline label); rebuild just this card in its existing slot.
+                this._replaceFarmCard(device, descriptors);
+                continue;
+            }
+
+            entry.nicknameLabel.text = device.nickname || device.ip || 'Device';
+            if (stats) {
+                for (const descriptor of descriptors) {
+                    const label = entry.valueLabels.get(descriptor.key);
+                    if (label) {
+                        label.text = descriptor.fn(stats);
+                    }
+                }
+            }
+        }
+    }
+
+    _replaceFarmCard(device, descriptors) {
+        const entry = this._farmCards.get(device.id);
+        if (!entry) {
+            return;
+        }
+        const oldCard = entry.card;
+        const parent = oldCard.get_parent();
+        const newCard = this._createFarmDeviceCard(device, descriptors);
+        if (this._farmColumns > 1) {
+            newCard.set_width(this._farmCardWidth);
+        }
+        if (parent) {
+            parent.replace_child(oldCard, newCard);
+        }
+        oldCard.destroy();
+    }
+
+    _createFarmDeviceCard(device, descriptors) {
         const card = new St.BoxLayout({
             style_class: 'bitaxe-farm-card',
             vertical: true,
@@ -956,113 +1166,53 @@ class BitaxeIndicator extends PanelMenu.Button {
         header.add_child(statusLabel);
         card.add_child(header);
 
+        const valueLabels = new Map();
+
         if (!stats) {
             const offlineLabel = new St.Label({
                 text: 'Offline or connecting...',
                 style_class: 'bitaxe-farm-offline',
             });
             card.add_child(offlineLabel);
-            return card;
+        } else {
+            // Stats grid
+            const grid = new St.BoxLayout({
+                style_class: 'bitaxe-farm-stats-grid',
+                vertical: true,
+            });
+
+            for (const descriptor of descriptors) {
+                const row = new St.BoxLayout({
+                    style_class: 'bitaxe-farm-stat-row',
+                    x_expand: true,
+                });
+                const labelWidget = new St.Label({
+                    text: descriptor.label,
+                    style_class: 'bitaxe-farm-stat-label',
+                });
+                const valueWidget = new St.Label({
+                    text: descriptor.fn(stats),
+                    style_class: 'bitaxe-farm-stat-value',
+                    x_expand: true,
+                    x_align: Clutter.ActorAlign.END,
+                });
+                row.add_child(labelWidget);
+                row.add_child(valueWidget);
+                grid.add_child(row);
+                valueLabels.set(descriptor.key, valueWidget);
+            }
+
+            card.add_child(grid);
         }
 
-        // Stats grid
-        const grid = new St.BoxLayout({
-            style_class: 'bitaxe-farm-stats-grid',
-            vertical: true,
+        this._farmCards.set(device.id, {
+            card,
+            valueLabels,
+            statusLabel,
+            nicknameLabel,
+            hasStats: Boolean(stats),
         });
 
-        const addRow = (label, value) => {
-            const row = new St.BoxLayout({
-                style_class: 'bitaxe-farm-stat-row',
-                x_expand: true,
-            });
-            const labelWidget = new St.Label({
-                text: label,
-                style_class: 'bitaxe-farm-stat-label',
-            });
-            const valueWidget = new St.Label({
-                text: value,
-                style_class: 'bitaxe-farm-stat-value',
-                x_expand: true,
-                x_align: Clutter.ActorAlign.END,
-            });
-            row.add_child(labelWidget);
-            row.add_child(valueWidget);
-            grid.add_child(row);
-        };
-
-        if (this._settings.get_boolean('farm-show-hashrate')) {
-            addRow('Hashrate', this._formatHashrate(this._toNumber(stats.hashRate, 0)));
-        }
-
-        if (this._settings.get_boolean('farm-show-asic-temp')) {
-            addRow('ASIC Temp', `${Math.round(this._toNumber(stats.temp, 0))}°C`);
-        }
-
-        if (this._settings.get_boolean('farm-show-vrm-temp')) {
-            addRow('VRM Temp', `${Math.round(this._toNumber(stats.vrTemp, 0))}°C`);
-        }
-
-        if (this._settings.get_boolean('farm-show-power')) {
-            addRow('Power', `${this._toNumber(stats.power, 0).toFixed(2)}W`);
-        }
-
-        if (this._settings.get_boolean('farm-show-voltage')) {
-            const voltage = this._toNumber(stats.voltage, 0);
-            addRow('Voltage', voltage > 0 ? `${voltage.toFixed(0)}mV` : '--');
-        }
-
-        if (this._settings.get_boolean('farm-show-efficiency')) {
-            const hr = this._toNumber(stats.hashRate, 0);
-            const pwr = this._toNumber(stats.power, 0);
-            let efficiency = NaN;
-            if (pwr > 0 && hr > 0) {
-                efficiency = hr / pwr;
-            }
-            addRow('Efficiency', Number.isFinite(efficiency) ? `${efficiency.toFixed(2)} GH/W` : '--');
-        }
-
-        if (this._settings.get_boolean('farm-show-shares')) {
-            addRow('Shares', `${this._toNumber(stats.sharesAccepted, 0)}`);
-        }
-
-        if (this._settings.get_boolean('farm-show-error-rate')) {
-            const errorPercentage = this._toNumber(stats.errorPercentage, 0);
-            addRow('Error Rate', `${errorPercentage.toFixed(2)}%`);
-        }
-
-        if (this._settings.get_boolean('farm-show-best-diff')) {
-            const bestDiff = this._toNumber(stats.bestDiff, 0);
-            addRow('Best Diff', this._formatDifficulty(bestDiff));
-        }
-
-        if (this._settings.get_boolean('farm-show-fan')) {
-            const fanRpm = this._toNumber(stats.fanrpm, 0);
-            addRow('Fan', fanRpm > 0 ? `${fanRpm} RPM` : '--');
-        }
-
-        if (this._settings.get_boolean('farm-show-frequency')) {
-            const frequency = this._toNumber(stats.frequency, 0);
-            addRow('Frequency', frequency > 0 ? `${frequency} MHz` : '--');
-        }
-
-        if (this._settings.get_boolean('farm-show-pool')) {
-            const pool = stats.stratumURL || '--';
-            // Shorten pool URL for compact display
-            const poolDisplay = pool.length > 30 ? pool.substring(0, 27) + '...' : pool;
-            addRow('Pool', poolDisplay);
-        }
-
-        if (this._settings.get_boolean('farm-show-uptime')) {
-            addRow('Uptime', this._formatUptime(stats.uptimeSeconds));
-        }
-
-        if (this._settings.get_boolean('farm-show-model')) {
-            const model = stats.ASICModel || '--';
-            addRow('Model', model);
-        }
-
-        card.add_child(grid);
         return card;
     }
 
@@ -1131,8 +1281,8 @@ class BitaxeIndicator extends PanelMenu.Button {
         }
         this._setStatValue('efficiency', this._formatEfficiency(efficiency));
 
-        const overclockEnabled = this._toNumber(stats.overclockEnabled, 0);
-        this._setStatValue('overclock', overclockEnabled === 1 ? 'Enabled' : 'Disabled');
+        const overclockEnabled = stats.overclockEnabled === true || this._toNumber(stats.overclockEnabled, 0) === 1;
+        this._setStatValue('overclock', overclockEnabled ? 'Enabled' : 'Disabled');
 
         this._setStatValue('pool', stats.stratumURL || 'Not connected');
 
@@ -1173,24 +1323,19 @@ class BitaxeIndicator extends PanelMenu.Button {
         this._setStatValue('freeHeap', this._formatBytes(freeHeap));
 
         this._updateVoltageRails(stats);
-        this._pushDeviceSparkline(device.id, 'hashrate', this._toNumber(stats.hashRate, NaN));
-        this._pushDeviceSparkline(device.id, 'error-rate', errorPercentage);
-        this._pushDeviceSparkline(device.id, 'temp', this._toNumber(stats.temp, NaN));
-        this._pushDeviceSparkline(device.id, 'vrm-temp', this._toNumber(stats.vrTemp, NaN));
-        this._pushDeviceSparkline(device.id, 'power', this._toNumber(stats.power, NaN));
-        this._pushDeviceSparkline(device.id, 'fan', fanRpm);
-        this._pushDeviceSparkline(device.id, 'efficiency', efficiency);
-        this._updateSparklineVisibility();
         this._setStatValue('updatedLast', this._formatTimeNow());
     }
 
     _refresh() {
+        this._fetchAllDevices();
+        this._scheduleRefresh();
+    }
+
+    _scheduleRefresh() {
         if (this._timeoutId) {
             GLib.source_remove(this._timeoutId);
             this._timeoutId = null;
         }
-
-        this._fetchAllDevices();
 
         const interval = this._settings.get_int('refresh-interval');
         this._timeoutId = GLib.timeout_add_seconds(
@@ -1259,7 +1404,22 @@ class BitaxeIndicator extends PanelMenu.Button {
 
         const fetchGeneration = ++this._fetchGeneration;
         this._activeFetchGeneration = fetchGeneration;
-        const fetchPromises = this._devices.map(device => this._fetchDeviceStats(device, fetchGeneration));
+        const fetchPromises = this._devices.map(device =>
+            this._fetchDeviceStats(device, fetchGeneration).then(stats => {
+                if (fetchGeneration !== this._activeFetchGeneration) {
+                    return;
+                }
+                // Show each device's data as soon as it lands instead of waiting for
+                // the slowest (or a 10s offline timeout) to settle the whole batch.
+                this._hasFetchedStats = true;
+                this._updateUI();
+                // Append history once per cycle, only for the device being viewed,
+                // sampling its freshly fetched values exactly once.
+                if (stats && device.id === this._currentView) {
+                    this._pushDeviceSparklines(device.id, stats);
+                }
+            })
+        );
 
         Promise.all(fetchPromises).finally(() => {
             if (fetchGeneration !== this._activeFetchGeneration) {
@@ -1287,6 +1447,11 @@ class BitaxeIndicator extends PanelMenu.Button {
 
             const url = `${target.baseUri}/api/system/info`;
             const message = Soup.Message.new('GET', url);
+            if (!message) {
+                this._deviceStats.delete(device.id);
+                resolve(null);
+                return;
+            }
 
             this._httpSession.send_and_read_async(
                 message,
@@ -1306,7 +1471,11 @@ class BitaxeIndicator extends PanelMenu.Button {
                         }
 
                         const decoder = new TextDecoder('utf-8');
-                        const response = decoder.decode(bytes.get_data());
+                        const data = bytes.get_data();
+                        if (data && data.length > 1048576) {
+                            throw new Error(`Response too large: ${data.length} bytes`);
+                        }
+                        const response = decoder.decode(data);
                         const stats = JSON.parse(response);
                         this._deviceStats.set(device.id, stats);
                         resolve(stats);
@@ -1347,8 +1516,12 @@ class BitaxeIndicator extends PanelMenu.Button {
             this._updatePanelForDevice(this._selectedDeviceId || this._devices[0].id);
         } else if (panelMode === 'aggregate') {
             this._updatePanelAggregate();
-        } else { // 'auto'
-            this._updatePanelAggregate();
+        } else { // 'auto' — mirror whatever the popup is currently showing
+            if (this._currentView === 'farm') {
+                this._updatePanelAggregate();
+            } else {
+                this._updatePanelForDevice(this._currentView);
+            }
         }
     }
 
@@ -1513,11 +1686,11 @@ class BitaxeIndicator extends PanelMenu.Button {
     }
 
     _formatHashrate(hashrate) {
-        if (!Number.isFinite(hashrate) || hashrate === 0) {
-            return '0 GH/s';
-        }
-
         const unit = this._settings.get_string('hashrate-unit');
+
+        if (!Number.isFinite(hashrate) || hashrate === 0) {
+            return unit === 'TH/s' ? '0.00 TH/s' : '0 GH/s';
+        }
 
         if (unit === 'TH/s') {
             return `${(hashrate / 1000).toFixed(2)} TH/s`;
@@ -1621,6 +1794,11 @@ class BitaxeIndicator extends PanelMenu.Button {
     }
 
     _toNumber(value, fallback) {
+        // Number(null) / Number('') / Number(false) are all 0, which would mask
+        // missing fields as real readings (e.g. "0 dBm" for an absent RSSI).
+        if (value === null || value === undefined || value === '' || typeof value === 'boolean') {
+            return fallback;
+        }
         const num = Number(value);
         return Number.isFinite(num) ? num : fallback;
     }
@@ -1844,6 +2022,26 @@ class BitaxeIndicator extends PanelMenu.Button {
         sparkline.push(value);
     }
 
+    _pushDeviceSparklines(deviceId, stats) {
+        const errorPercentage = this._toNumber(stats.errorPercentage, 0);
+        const fanRpm = this._toNumber(stats.fanrpm, NaN);
+        let efficiency = this._toNumber(stats.efficiency, NaN);
+        if (!Number.isFinite(efficiency)) {
+            const hr = this._toNumber(stats.hashRate, 0);
+            const pwr = this._toNumber(stats.power, 0);
+            if (pwr > 0 && hr > 0) {
+                efficiency = hr / pwr;
+            }
+        }
+        this._pushDeviceSparkline(deviceId, 'hashrate', this._toNumber(stats.hashRate, NaN));
+        this._pushDeviceSparkline(deviceId, 'error-rate', errorPercentage);
+        this._pushDeviceSparkline(deviceId, 'temp', this._toNumber(stats.temp, NaN));
+        this._pushDeviceSparkline(deviceId, 'vrm-temp', this._toNumber(stats.vrTemp, NaN));
+        this._pushDeviceSparkline(deviceId, 'power', this._toNumber(stats.power, NaN));
+        this._pushDeviceSparkline(deviceId, 'fan', fanRpm);
+        this._pushDeviceSparkline(deviceId, 'efficiency', efficiency);
+    }
+
     _updateSparklineVisibility() {
         const visible = this._settings.get_boolean('show-sparklines');
         for (const deviceSparklines of this._deviceSparklines.values()) {
@@ -1925,6 +2123,11 @@ class BitaxeIndicator extends PanelMenu.Button {
         const canRefresh = !isBusy && !this._isPaused;
         this._refreshButton.reactive = canRefresh;
         this._refreshButton.can_focus = canRefresh;
+        if (canRefresh) {
+            this._refreshButton.remove_style_class_name('bitaxe-button-busy');
+        } else {
+            this._refreshButton.add_style_class_name('bitaxe-button-busy');
+        }
     }
 
     _setPaused(paused) {
@@ -1944,7 +2147,10 @@ class BitaxeIndicator extends PanelMenu.Button {
             }
             this._setRefreshButtonBusy(false);
             this._setStatValue('updatedLast', 'Paused');
-            this._updateLabel('Paused');
+            // Pause is user-initiated — reflect it on the panel immediately even
+            // when the menu is open (_updateLabel would otherwise defer it).
+            this._pendingPanelLabelText = null;
+            this._label.text = 'Paused';
         } else {
             this._fetchAllDevices();
         }
@@ -2002,7 +2208,8 @@ class BitaxeIndicator extends PanelMenu.Button {
 
         let device;
         if (this._currentView === 'farm' || this._currentView === 'auto') {
-            device = this._devices[0];
+            // Farm/auto view has no single focused device; prefer the selected one.
+            device = this._devices.find(d => d.id === this._selectedDeviceId) || this._devices[0];
         } else {
             device = this._devices.find(d => d.id === this._currentView) || this._devices[0];
         }
@@ -2040,45 +2247,11 @@ class BitaxeIndicator extends PanelMenu.Button {
     _clearStatsUI(labelText) {
         this._updateLabel(labelText);
 
-        this._setStatValue('hashrate', '--');
-        this._setStatValue('hashrate1m', '--');
-        this._setStatValue('hashrate10m', '--');
-        this._setStatValue('hashrate1h', '--');
-        this._setStatValue('errorRate', '--');
-
-        this._setStatValue('asicTemp', '--');
-        this._setStatValue('vrmTemp', '--');
-        this._setStatValue('tempTarget', '--');
-
-        this._setStatValue('power', '--');
-        this._setStatValue('voltage', '--');
-        this._setStatValue('current', '--');
-        this._setStatValue('coreVoltage', '--');
-
-        this._setStatValue('fan', '--');
-        this._setStatValue('frequency', '--');
-        this._setStatValue('efficiency', '--');
-        this._setStatValue('overclock', '--');
-
-        this._setStatValue('pool', '--');
-        this._setStatValue('poolDifficulty', '--');
-        this._setStatValue('fallbackPool', '--');
-
-        this._setStatValue('sharesAccepted', '--');
-        this._setStatValue('sharesRejected', '--');
-        this._setStatValue('bestDiff', '--');
-        this._setStatValue('bestSessionDiff', '--');
-
-        this._setStatValue('uptime', '--');
-        this._setStatValue('model', '--');
-        this._setStatValue('version', '--');
-        this._setStatValue('boardVersion', '--');
-        this._setStatValue('updatedLast', '--');
-
-        this._setStatValue('ipAddress', '--');
-        this._setStatValue('ssid', '--');
-        this._setStatValue('wifiRssi', '--');
-        this._setStatValue('freeHeap', '--');
+        // Reset every registered stat label rather than a hand-maintained list,
+        // so new stats can't be forgotten here. Voltage rails are torn down below.
+        for (const label of this._statValueLabels.values()) {
+            label.text = '--';
+        }
 
         this._clearVoltageRails();
     }
@@ -2244,7 +2417,6 @@ class BitaxeIndicator extends PanelMenu.Button {
         clipboard.set_text(St.ClipboardType.PRIMARY, clipboardText);
 
         if (this._copyStatsButton) {
-            const originalLabel = this._copyStatsButton.label;
             this._copyStatsButton.label = 'Copied!';
 
             if (this._copyStatsFeedbackTimeoutId) {
@@ -2255,7 +2427,7 @@ class BitaxeIndicator extends PanelMenu.Button {
             this._copyStatsFeedbackTimeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 2000, () => {
                 this._copyStatsFeedbackTimeoutId = null;
                 if (this._copyStatsButton) {
-                    this._copyStatsButton.label = originalLabel;
+                    this._copyStatsButton.label = 'Copy Stats';
                 }
                 return GLib.SOURCE_REMOVE;
             });
@@ -2301,8 +2473,8 @@ class BitaxeIndicator extends PanelMenu.Button {
         if (this._deviceSparklines) {
             for (const deviceSparklines of this._deviceSparklines.values()) {
                 for (const sparkline of deviceSparklines.values()) {
-                    if (sparkline && sparkline.actor) {
-                        sparkline.actor.destroy();
+                    if (sparkline) {
+                        sparkline.destroy();
                     }
                 }
                 deviceSparklines.clear();
@@ -2312,7 +2484,7 @@ class BitaxeIndicator extends PanelMenu.Button {
         }
 
         if (this._dialog) {
-            this._dialog.close();
+            this._dialog.destroy();
             this._dialog = null;
         }
 

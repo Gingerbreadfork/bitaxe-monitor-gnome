@@ -150,11 +150,6 @@
         <choice value='aggregate'/>
       </choices>
     </key>
-    <key name="always-scroll-device-list" type="b">
-      <default>false</default>
-      <summary>Always Scroll Device List</summary>
-      <description>Always use scrollable device list in popup (even with fewer than 8 devices)</description>
-    </key>
     <key name="farm-view-columns" type="i">
       <default>1</default>
       <range min="1" max="4"/>

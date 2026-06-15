@@ -2,13 +2,14 @@
   "name": "Bitaxe Monitor",
   "description": "Monitor your Bitaxe mining stats on your panel",
   "uuid": "bitaxe-monitor@gingerbreadfork.github.io",
-  "version": 7,
+  "version": 8,
   "shell-version": [
     "45",
     "46",
     "47",
     "48",
-    "49"
+    "49",
+    "50"
   ],
   "url": "https://github.com/Gingerbreadfork/bitaxe-monitor-gnome",
   "donations": {

@@ -30,6 +30,10 @@
     font-weight: 600;
 }
 
+.bitaxe-button-busy {
+    opacity: 0.6;
+}
+
 .bitaxe-popup-columns {
     spacing: 8px;
 }

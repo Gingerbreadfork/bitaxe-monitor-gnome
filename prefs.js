@@ -206,19 +206,9 @@ export default class BitaxeMonitorPreferences extends ExtensionPreferences {
             'panel-display-mode',
             'Panel Display',
             'What to show on the panel with multiple devices',
-            ['Auto (Aggregate Total)', 'Selected Device Only', 'Aggregate (Total)'],
+            ['Auto (Follow Current View)', 'Selected Device Only', 'Aggregate (Total)'],
             ['auto', 'selected', 'aggregate']
         );
-
-        const scrollDeviceListRow = new Adw.SwitchRow({
-            title: 'Always Scroll Device List',
-            subtitle: 'Use scrollable device list even with fewer than 8 devices',
-        });
-        scrollDeviceListRow.set_active(settings.get_boolean('always-scroll-device-list'));
-        scrollDeviceListRow.connect('notify::active', (widget) => {
-            settings.set_boolean('always-scroll-device-list', widget.get_active());
-        });
-        multiDeviceGroup.add(scrollDeviceListRow);
 
         const farmColumnsRow = new Adw.SpinRow({
             title: 'Farm View Columns',
@@ -420,6 +410,11 @@ export default class BitaxeMonitorPreferences extends ExtensionPreferences {
         const currentIndex = values.indexOf(currentValue);
         if (currentIndex >= 0) {
             row.set_selected(currentIndex);
+        } else {
+            // Stored value isn't a known choice (schema drift / external edit);
+            // snap both the combo and the setting back to the default.
+            row.set_selected(0);
+            settings.set_string(key, values[0]);
         }
 
         row.connect('notify::selected', (widget) => {

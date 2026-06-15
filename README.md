@@ -33,7 +33,7 @@ A comprehensive GNOME Shell extension for monitoring your Bitaxe mining devices.
   - Customizable separators and display format
 
 - **Panel Display Modes**
-  - **Auto** - Shows selected device or first device
+  - **Auto** - Mirrors the current popup view (aggregate totals in Farm view, the focused device in single-device view)
   - **Selected Device** - Always shows your chosen device
   - **Aggregate** - Total hashrate, power, and average temp across all devices
 
@@ -187,7 +187,7 @@ The API returns comprehensive system information including:
 
 ## Requirements
 
-- **GNOME Shell**: 45, 46, 47, 48, or 49
+- **GNOME Shell**: 45, 46, 47, 48, 49, or 50
 - **Bitaxe Device**: Running AxeOS firmware
 - **Network**: Direct access to your Bitaxe device(s)
 
