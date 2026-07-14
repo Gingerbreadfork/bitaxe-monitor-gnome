@@ -1,8 +1,7 @@
 {
   "name": "Bitaxe Monitor",
-  "description": "Monitor your Bitaxe mining stats on your panel",
+  "description": "Monitor your Bitaxe mining stats on your panel. Includes a Copy Stats button that writes the currently displayed stats to the clipboard when clicked.",
   "uuid": "bitaxe-monitor@gingerbreadfork.github.io",
-  "version": 8,
   "shell-version": [
     "45",
     "46",

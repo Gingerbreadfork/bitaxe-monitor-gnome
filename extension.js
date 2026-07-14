@@ -16,9 +16,6 @@ const SPARKLINE_WIDTH = 88;
 const SPARKLINE_HEIGHT = 22;
 const SPARKLINE_PADDING = 2;
 const SPARKLINE_WINDOW_DEFAULT_MINUTES = 5;
-// Safety backstop on retained sparkline samples. Must exceed the largest
-// legitimate sample count (60 min window at a 1 s refresh = 3600) so long
-// windows at fast refresh rates are not silently truncated.
 const SPARKLINE_MAX_POINTS_HARD_CAP = 4096;
 const HTTP_REQUEST_TIMEOUT_SECONDS = 10;
 const STATUS_NO_DEVICES = 'No devices';
@@ -274,17 +271,14 @@ class DeviceSelectorDialog extends ModalDialog.ModalDialog {
             style_class: 'device-selector-list',
         });
 
-        // Add Farm View option
         const farmButton = this._createDeviceButton('Farm View', 'farm', this._currentView === 'farm');
         listBox.add_child(farmButton);
 
-        // Add separator
         const separator = new St.Widget({
             style_class: 'popup-separator-menu-item device-selector-separator',
         });
         listBox.add_child(separator);
 
-        // Add individual devices
         for (const device of this._devices) {
             const deviceName = device.nickname || device.ip || 'Device';
             const isSelected = this._currentView === device.id;
@@ -354,7 +348,6 @@ class BitaxeIndicator extends PanelMenu.Button {
         this._settings = settings;
         this._openPreferences = openPreferencesCallback;
         this._httpSession = new Soup.Session({
-            // Prevent one unresponsive device from stalling the full refresh loop.
             timeout: HTTP_REQUEST_TIMEOUT_SECONDS,
             user_agent: 'bitaxe-monitor-gnome',
         });
@@ -372,7 +365,7 @@ class BitaxeIndicator extends PanelMenu.Button {
         this._pendingPanelLabelText = null;
         this._sparklineWindowSeconds = this._getSparklineWindowSeconds();
         this._isPaused = false;
-        this._currentView = 'auto'; // 'auto', 'farm', or deviceId
+        this._currentView = 'auto';
         this._selectedDeviceId = null;
         this._dialog = null;
 
@@ -445,7 +438,6 @@ class BitaxeIndicator extends PanelMenu.Button {
             this._settings.connect('changed::farm-view-columns', () => this._updateFarmView())
         );
 
-        // Listen for farm view stats settings changes
         const farmStatsKeys = [
             'farm-show-hashrate',
             'farm-show-asic-temp',
@@ -473,7 +465,6 @@ class BitaxeIndicator extends PanelMenu.Button {
     }
 
     _createMenuItems() {
-        // Header with title and view indicator
         const headerItem = new PopupMenu.PopupBaseMenuItem({
             reactive: false,
             can_focus: false,
@@ -502,7 +493,6 @@ class BitaxeIndicator extends PanelMenu.Button {
 
         this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
 
-        // Farm view container
         this._farmViewContainer = new St.ScrollView({
             style_class: 'bitaxe-farm-view',
             hscrollbar_policy: St.PolicyType.NEVER,
@@ -524,14 +514,11 @@ class BitaxeIndicator extends PanelMenu.Button {
         this._farmViewItem = farmViewItem;
         this._farmViewItem.actor.visible = false;
 
-        // Farm cards are keyed by device id so a refresh updates the value labels
-        // in place instead of tearing down and rebuilding every card each tick.
         this._farmCards = new Map();
         this._farmSignature = null;
         this._farmColumns = 1;
         this._farmCardWidth = 0;
 
-        // Single device view (original detailed view)
         this._singleDeviceScrollView = new St.ScrollView({
             style_class: 'bitaxe-single-device-scroll',
             hscrollbar_policy: St.PolicyType.NEVER,
@@ -546,8 +533,8 @@ class BitaxeIndicator extends PanelMenu.Button {
 
         this._statValueLabels = new Map();
         this._voltageRailRows = new Map();
-        this._sparklineCells = new Map(); // Maps entry.sparkline -> St.BoxLayout cell
-        this._currentSparklineDeviceId = null; // Track which device's sparklines are currently displayed
+        this._sparklineCells = new Map();
+        this._currentSparklineDeviceId = null;
 
         this._columnsBox = new St.BoxLayout({
             style_class: 'bitaxe-popup-columns',
@@ -585,7 +572,6 @@ class BitaxeIndicator extends PanelMenu.Button {
         this.menu.addMenuItem(singleDeviceItem);
         this._singleDeviceItem = singleDeviceItem;
 
-        // Apply initial sparkline theme
         this._updateSparklineTheme();
 
         this._addSection(this._leftColumn, 'Hashrate', [
@@ -658,7 +644,6 @@ class BitaxeIndicator extends PanelMenu.Button {
 
         this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
 
-        // Action buttons
         const actionsItem = new PopupMenu.PopupBaseMenuItem({
             reactive: false,
             can_focus: false,
@@ -781,7 +766,6 @@ class BitaxeIndicator extends PanelMenu.Button {
             this._devices = [];
         }
 
-        // Migrate old single IP if devices list is empty
         if (this._devices.length === 0) {
             if (oldIp && oldIp !== '') {
                 this._devices = [{
@@ -790,11 +774,9 @@ class BitaxeIndicator extends PanelMenu.Button {
                     ip: oldIp,
                 }];
                 this._settings.set_string('devices-json', JSON.stringify(this._devices));
-                // Clear legacy key so deleting all devices does not resurrect a migrated device.
                 this._settings.set_string('bitaxe-ip', '');
             }
         } else if (oldIp && oldIp !== '') {
-            // Clean up stale legacy setting once a devices list exists.
             this._settings.set_string('bitaxe-ip', '');
         }
 
@@ -806,8 +788,6 @@ class BitaxeIndicator extends PanelMenu.Button {
         }
         for (const [deviceId, sparklines] of this._deviceSparklines.entries()) {
             if (!activeDeviceIds.has(deviceId)) {
-                // Destroy the actors, not just the map entry — otherwise a removed
-                // device's sparkline can stay parented in a stat cell and leak.
                 for (const sparkline of sparklines.values()) {
                     if (sparkline) {
                         sparkline.destroy();
@@ -818,7 +798,6 @@ class BitaxeIndicator extends PanelMenu.Button {
             }
         }
         if (this._currentSparklineDeviceId && !activeDeviceIds.has(this._currentSparklineDeviceId)) {
-            // Its cells now hold destroyed actors; forget it so they repopulate.
             this._currentSparklineDeviceId = null;
         }
 
@@ -831,10 +810,6 @@ class BitaxeIndicator extends PanelMenu.Button {
             }
         }
 
-        // Preserve the user's chosen view across device-list changes. Only recompute
-        // it (from default-view) when the view would otherwise be invalid: the viewed
-        // device was removed, or the device count crossed the single/farm threshold.
-        // A nickname/IP edit or an unrelated add/remove keeps the current view.
         const previousIds = this._knownDeviceIds;
         const previousCount = previousIds ? previousIds.size : 0;
         this._knownDeviceIds = activeDeviceIds;
@@ -862,7 +837,6 @@ class BitaxeIndicator extends PanelMenu.Button {
             return;
         }
 
-        // Show button only when there are multiple devices
         if (this._devices.length <= 1) {
             this._selectViewButton.visible = false;
         } else {
@@ -870,7 +844,6 @@ class BitaxeIndicator extends PanelMenu.Button {
             this._selectViewButton.label = 'View';
         }
 
-        // Update header label to show current view
         if (this._viewLabel) {
             let currentViewLabel = '';
             if (this._currentView === 'farm') {
@@ -900,7 +873,6 @@ class BitaxeIndicator extends PanelMenu.Button {
         );
         this._dialog = dialog;
         dialog.connect('closed', () => {
-            // Guard against a stale 'closed' nulling a newer dialog reference.
             if (this._dialog === dialog) {
                 this._dialog = null;
             }
@@ -916,7 +888,6 @@ class BitaxeIndicator extends PanelMenu.Button {
         }
         this._buildDeviceSelector();
         this._updateViewDisplay();
-        // Keep the panel in sync immediately when "auto" mirrors the current view.
         this._updatePanelDisplay();
     }
 
@@ -931,7 +902,7 @@ class BitaxeIndicator extends PanelMenu.Button {
             this._currentView = 'farm';
         } else if (defaultView === 'single') {
             this._currentView = this._selectedDeviceId || this._devices[0].id;
-        } else { // 'auto' — multiple devices default to the farm overview
+        } else {
             this._currentView = 'farm';
         }
 
@@ -1006,7 +977,6 @@ class BitaxeIndicator extends PanelMenu.Button {
         if (s.get_boolean('farm-show-pool')) {
             add('pool', 'Pool', stats => {
                 const pool = stats.stratumURL || '--';
-                // Shorten pool URL for compact display
                 return pool.length > 30 ? pool.substring(0, 27) + '...' : pool;
             });
         }
@@ -1024,11 +994,6 @@ class BitaxeIndicator extends PanelMenu.Button {
         const columns = Math.max(1, Math.min(4, this._settings.get_int('farm-view-columns')));
         const descriptors = this._getFarmStatDescriptors();
 
-        // The card layout (which devices, the column grid, and which stat rows an
-        // online card shows) depends only on these inputs. When unchanged we update
-        // the existing value labels in place rather than destroying and rebuilding
-        // every card on each refresh tick — that rebuild caused popup flicker, lost
-        // scroll position, and wasted work even while the popup was closed.
         const signature = JSON.stringify({
             ids: this._devices.map(device => device.id),
             columns,
@@ -1057,22 +1022,17 @@ class BitaxeIndicator extends PanelMenu.Button {
             return;
         }
 
-        // Calculate fixed card width based on column count
-        // 900px max-width - 24px padding = 876px available
-        // Account for 8px margin per card (4px each side) and 8px spacing between cards
         const containerWidth = 876;
-        const totalMargin = columns * 8; // 4px margin on each side per card
-        const totalSpacing = (columns - 1) * 8; // spacing between cards
+        const totalMargin = columns * 8;
+        const totalSpacing = (columns - 1) * 8;
         const availableWidth = containerWidth - totalMargin - totalSpacing;
         this._farmCardWidth = Math.floor(availableWidth / columns);
 
         if (columns === 1) {
-            // Single column - simple vertical layout
             for (const device of this._devices) {
                 this._farmViewBox.add_child(this._createFarmDeviceCard(device, descriptors));
             }
         } else {
-            // Multi-column layout
             let currentRow = null;
             let deviceCount = 0;
 
@@ -1102,8 +1062,6 @@ class BitaxeIndicator extends PanelMenu.Button {
 
             const stats = this._deviceStats.get(device.id);
             if (Boolean(stats) !== entry.hasStats) {
-                // Online/offline transition changes the card's structure (stats grid
-                // vs. offline label); rebuild just this card in its existing slot.
                 this._replaceFarmCard(device, descriptors);
                 continue;
             }
@@ -1146,7 +1104,6 @@ class BitaxeIndicator extends PanelMenu.Button {
 
         const stats = this._deviceStats.get(device.id);
 
-        // Header with nickname
         const header = new St.BoxLayout({
             style_class: 'bitaxe-farm-card-header',
             x_expand: true,
@@ -1158,7 +1115,6 @@ class BitaxeIndicator extends PanelMenu.Button {
         });
         header.add_child(nicknameLabel);
 
-        // Status indicator
         const statusLabel = new St.Label({
             text: stats ? '●' : '○',
             style_class: stats ? 'bitaxe-farm-status-online' : 'bitaxe-farm-status-offline',
@@ -1175,7 +1131,6 @@ class BitaxeIndicator extends PanelMenu.Button {
             });
             card.add_child(offlineLabel);
         } else {
-            // Stats grid
             const grid = new St.BoxLayout({
                 style_class: 'bitaxe-farm-stats-grid',
                 vertical: true,
@@ -1223,7 +1178,6 @@ class BitaxeIndicator extends PanelMenu.Button {
             return;
         }
 
-        // Ensure sparklines are populated for this device
         this._populateSparklineCells(device.id);
 
         const stats = this._deviceStats.get(device.id);
@@ -1409,12 +1363,8 @@ class BitaxeIndicator extends PanelMenu.Button {
                 if (fetchGeneration !== this._activeFetchGeneration) {
                     return;
                 }
-                // Show each device's data as soon as it lands instead of waiting for
-                // the slowest (or a 10s offline timeout) to settle the whole batch.
                 this._hasFetchedStats = true;
                 this._updateUI();
-                // Append history once per cycle, only for the device being viewed,
-                // sampling its freshly fetched values exactly once.
                 if (stats && device.id === this._currentView) {
                     this._pushDeviceSparklines(device.id, stats);
                 }
@@ -1516,7 +1466,7 @@ class BitaxeIndicator extends PanelMenu.Button {
             this._updatePanelForDevice(this._selectedDeviceId || this._devices[0].id);
         } else if (panelMode === 'aggregate') {
             this._updatePanelAggregate();
-        } else { // 'auto' — mirror whatever the popup is currently showing
+        } else {
             if (this._currentView === 'farm') {
                 this._updatePanelAggregate();
             } else {
@@ -1794,8 +1744,6 @@ class BitaxeIndicator extends PanelMenu.Button {
     }
 
     _toNumber(value, fallback) {
-        // Number(null) / Number('') / Number(false) are all 0, which would mask
-        // missing fields as real readings (e.g. "0 dBm" for an absent RSSI).
         if (value === null || value === undefined || value === '' || typeof value === 'boolean') {
             return fallback;
         }
@@ -1936,7 +1884,6 @@ class BitaxeIndicator extends PanelMenu.Button {
                 x_align: Clutter.ActorAlign.CENTER,
             });
             if (entry.sparkline) {
-                // Store the cell for later population
                 this._sparklineCells.set(entry.sparkline, sparklineCell);
             } else {
                 sparklineCell.add_style_class_name('bitaxe-sparkline-cell-empty');
@@ -1947,7 +1894,6 @@ class BitaxeIndicator extends PanelMenu.Button {
                 style_class: 'bitaxe-sparkline-cell',
                 x_align: Clutter.ActorAlign.CENTER,
             });
-            // Store the cell for later population
             this._sparklineCells.set(entry.sparkline, sparklineCell);
             row.add_child(sparklineCell);
         }
@@ -1987,20 +1933,16 @@ class BitaxeIndicator extends PanelMenu.Button {
             return;
         }
 
-        // If sparklines for this device are already displayed, nothing to do
         if (this._currentSparklineDeviceId === deviceId) {
             return;
         }
 
-        // Remove previous sparklines from cells (without destroying them)
         for (const [sparklineKey, cell] of this._sparklineCells.entries()) {
-            // Remove all children but don't destroy them
             while (cell.get_n_children() > 0) {
                 const child = cell.get_first_child();
                 cell.remove_child(child);
             }
 
-            // Create/get sparkline for this device
             const sparkline = this._ensureDeviceSparkline(deviceId, sparklineKey);
             if (sparkline) {
                 cell.add_child(sparkline.actor);
@@ -2081,7 +2023,6 @@ class BitaxeIndicator extends PanelMenu.Button {
             return;
         }
 
-        // Remove all existing theme classes
         const themeClasses = [
             'bitaxe-sparkline-theme-colorful',
             'bitaxe-sparkline-theme-monochrome',
@@ -2102,12 +2043,10 @@ class BitaxeIndicator extends PanelMenu.Button {
             }
         }
 
-        // Add the new theme class
         const theme = this._settings.get_string('sparkline-theme');
         const themeClass = `bitaxe-sparkline-theme-${theme}`;
         this._singleDeviceContainer.add_style_class_name(themeClass);
 
-        // Force sparklines to repaint to apply new colors
         for (const deviceSparklines of this._deviceSparklines.values()) {
             for (const sparkline of deviceSparklines.values()) {
                 sparkline.actor.queue_repaint();
@@ -2147,8 +2086,6 @@ class BitaxeIndicator extends PanelMenu.Button {
             }
             this._setRefreshButtonBusy(false);
             this._setStatValue('updatedLast', 'Paused');
-            // Pause is user-initiated — reflect it on the panel immediately even
-            // when the menu is open (_updateLabel would otherwise defer it).
             this._pendingPanelLabelText = null;
             this._label.text = 'Paused';
         } else {
@@ -2175,7 +2112,6 @@ class BitaxeIndicator extends PanelMenu.Button {
             return null;
         }
 
-        // Allow either a raw host[:port] or an explicit http(s) URL without a path/query.
         const explicitUrlMatch = configured.match(/^(https?):\/\/([^/?#]+)\/?$/i);
         if (explicitUrlMatch) {
             const scheme = explicitUrlMatch[1].toLowerCase();
@@ -2208,7 +2144,6 @@ class BitaxeIndicator extends PanelMenu.Button {
 
         let device;
         if (this._currentView === 'farm' || this._currentView === 'auto') {
-            // Farm/auto view has no single focused device; prefer the selected one.
             device = this._devices.find(d => d.id === this._selectedDeviceId) || this._devices[0];
         } else {
             device = this._devices.find(d => d.id === this._currentView) || this._devices[0];
@@ -2247,8 +2182,6 @@ class BitaxeIndicator extends PanelMenu.Button {
     _clearStatsUI(labelText) {
         this._updateLabel(labelText);
 
-        // Reset every registered stat label rather than a hand-maintained list,
-        // so new stats can't be forgotten here. Voltage rails are torn down below.
         for (const label of this._statValueLabels.values()) {
             label.text = '--';
         }

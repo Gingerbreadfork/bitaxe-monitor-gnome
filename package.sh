@@ -11,7 +11,6 @@ require_cmd() {
   fi
 }
 
-require_cmd gnome-extensions
 require_cmd python3
 
 uuid="$(python3 - <<'PY'
@@ -36,7 +35,19 @@ if [ ! -f extension.js ]; then
   exit 1
 fi
 
-gnome-extensions pack -f -o "$dist_dir" "$ROOT"
+if command -v gnome-extensions >/dev/null 2>&1; then
+  gnome-extensions pack -f -o "$dist_dir" "$ROOT"
+else
+  echo "Warning: gnome-extensions not found; creating extension zip with zip" >&2
+  require_cmd zip
+  # Keep this list in sync with the sources gnome-extensions pack bundles.
+  zip -q "$bundle_path" \
+    metadata.json \
+    extension.js \
+    prefs.js \
+    stylesheet.css \
+    schemas/org.gnome.shell.extensions.bitaxe-monitor.gschema.xml
+fi
 
 if [ ! -f "$bundle_path" ]; then
   echo "Error: expected bundle not found: $bundle_path" >&2

@@ -65,10 +65,8 @@ export default class BitaxeMonitorPreferences extends ExtensionPreferences {
     fillPreferencesWindow(window) {
         const settings = this.getSettings();
 
-        // Migrate old single IP to devices list if needed
         this._migrateSettings(settings);
 
-        // Devices Page
         const devicesPage = new Adw.PreferencesPage({
             title: 'Devices',
             icon_name: 'network-server-symbolic',
@@ -81,7 +79,6 @@ export default class BitaxeMonitorPreferences extends ExtensionPreferences {
         });
         devicesPage.add(devicesGroup);
 
-        // Device list container
         const devicesListBox = new Gtk.ListBox({
             selection_mode: Gtk.SelectionMode.NONE,
             css_classes: ['boxed-list'],
@@ -101,7 +98,6 @@ export default class BitaxeMonitorPreferences extends ExtensionPreferences {
         devicesGroup.add(addDeviceButton);
 
         const loadDevices = () => {
-            // Clear existing rows
             let child = devicesListBox.get_first_child();
             while (child) {
                 const next = child.get_next_sibling();
@@ -145,13 +141,12 @@ export default class BitaxeMonitorPreferences extends ExtensionPreferences {
                     device,
                     saveDevices,
                     (id) => {
-                        // Find and remove the row
                         let child = devicesListBox.get_first_child();
                         while (child) {
                             if (child instanceof DeviceRow && child.getDevice().id === id) {
                                 devicesListBox.remove(child);
                                 saveDevices();
-                                loadDevices(); // Reload to update placeholder if needed
+                                loadDevices();
                                 break;
                             }
                             child = child.get_next_sibling();
@@ -183,7 +178,6 @@ export default class BitaxeMonitorPreferences extends ExtensionPreferences {
 
         loadDevices();
 
-        // Multi-device settings group
         const multiDeviceGroup = new Adw.PreferencesGroup({
             title: 'Multi-Device Settings',
             description: 'Configure behavior when multiple devices are added',
@@ -225,7 +219,6 @@ export default class BitaxeMonitorPreferences extends ExtensionPreferences {
         });
         multiDeviceGroup.add(farmColumnsRow);
 
-        // Farm View Stats Settings
         const farmStatsGroup = new Adw.PreferencesGroup({
             title: 'Farm View Stats',
             description: 'Choose which stats to display for each device in farm view',
@@ -256,7 +249,6 @@ export default class BitaxeMonitorPreferences extends ExtensionPreferences {
         addFarmSwitchRow('farm-show-uptime', 'Show Uptime', 'Display device uptime for each device');
         addFarmSwitchRow('farm-show-model', 'Show Model', 'Display ASIC model for each device');
 
-        // Display Settings Page
         const displayPage = new Adw.PreferencesPage({
             title: 'Display',
             icon_name: 'preferences-desktop-appearance-symbolic',
@@ -379,23 +371,145 @@ export default class BitaxeMonitorPreferences extends ExtensionPreferences {
             ['auto', 'GH/s', 'TH/s']
         );
 
-        // About Page
         const aboutPage = new Adw.PreferencesPage({
             title: 'About',
             icon_name: 'help-about-symbolic',
         });
         window.add(aboutPage);
 
-        const aboutGroup = new Adw.PreferencesGroup({
-            title: 'About',
-        });
-        aboutPage.add(aboutGroup);
+        this._buildAboutPage(aboutPage, window);
+    }
 
-        const aboutRow = new Adw.ActionRow({
-            title: 'Bitaxe Monitor',
-            subtitle: 'Monitor your Bitaxe mining stats\nSupports single and multi-device farms',
+    _buildAboutPage(page, window) {
+        const headerGroup = new Adw.PreferencesGroup();
+        page.add(headerGroup);
+
+        const headerBox = new Gtk.Box({
+            orientation: Gtk.Orientation.VERTICAL,
+            spacing: 6,
+            margin_top: 24,
         });
-        aboutGroup.add(aboutRow);
+
+        const logoLabel = new Gtk.Label();
+        logoLabel.set_markup('<span size="42pt">⛏️</span>');
+        headerBox.append(logoLabel);
+
+        const titleLabel = new Gtk.Label({
+            label: this.metadata.name ?? 'Bitaxe Monitor',
+            css_classes: ['title-1'],
+            margin_top: 6,
+        });
+        headerBox.append(titleLabel);
+
+        const descriptionLabel = new Gtk.Label({
+            label: 'Monitor your Bitaxe mining devices from the GNOME panel — single miners or whole farms, with live stats and sparkline graphs.',
+            wrap: true,
+            justify: Gtk.Justification.CENTER,
+            max_width_chars: 54,
+            css_classes: ['dim-label'],
+            margin_top: 6,
+        });
+        headerBox.append(descriptionLabel);
+
+        headerGroup.add(headerBox);
+
+        const projectGroup = new Adw.PreferencesGroup({
+            title: 'Project',
+        });
+        page.add(projectGroup);
+
+        this._addLinkRow(
+            projectGroup, window,
+            'GNOME Extensions',
+            'Install, update, and rate on extensions.gnome.org',
+            'https://extensions.gnome.org/extension/9300/bitaxe-monitor/'
+        );
+        this._addLinkRow(
+            projectGroup, window,
+            'Source Code',
+            'github.com/Gingerbreadfork/bitaxe-monitor-gnome',
+            'https://github.com/Gingerbreadfork/bitaxe-monitor-gnome'
+        );
+        this._addLinkRow(
+            projectGroup, window,
+            'Report an Issue',
+            'Bug reports and feature requests are welcome',
+            'https://github.com/Gingerbreadfork/bitaxe-monitor-gnome/issues'
+        );
+
+        const supportGroup = new Adw.PreferencesGroup({
+            title: 'Support Development',
+            description: 'While your Bitaxe hunts for blocks, a small donation helps fund new features and fixes.',
+        });
+        page.add(supportGroup);
+
+        this._addLinkRow(
+            supportGroup, window,
+            'PayPal',
+            'paypal.me/gingerbreadfork',
+            'https://paypal.me/gingerbreadfork'
+        );
+        this._addDonationRow(supportGroup, window, 'Bitcoin', 'bc1qlezapstmtq6jm4cj6ahn0ylyyfnpz79l2zegjv');
+        this._addDonationRow(supportGroup, window, 'DigiByte', 'dgb1qrf5m26fjs57rs4lehdm95ycz5h8py94n3hcw2h');
+        this._addDonationRow(supportGroup, window, 'Bitcoin Cash', 'qqn2ymq3qwp7987cjlllgyp56dk3m7t89vu8u48sxk');
+
+        const footerGroup = new Adw.PreferencesGroup();
+        page.add(footerGroup);
+
+        const footerLabel = new Gtk.Label({
+            label: 'MIT License · Built for the Bitaxe community · Happy mining! ⚡',
+            css_classes: ['dim-label', 'caption'],
+            justify: Gtk.Justification.CENTER,
+            wrap: true,
+            margin_top: 6,
+            margin_bottom: 12,
+        });
+        footerGroup.add(footerLabel);
+    }
+
+    _addLinkRow(group, window, title, subtitle, uri) {
+        const row = new Adw.ActionRow({
+            title,
+            subtitle,
+            activatable: true,
+        });
+        row.add_suffix(new Gtk.Image({
+            icon_name: 'adw-external-link-symbolic',
+            css_classes: ['dim-label'],
+        }));
+        row.connect('activated', () => {
+            new Gtk.UriLauncher({uri}).launch(window, null, (launcher, result) => {
+                try {
+                    launcher.launch_finish(result);
+                } catch (e) {
+                    // User cancelled or no browser available; nothing to do.
+                }
+            });
+        });
+        group.add(row);
+    }
+
+    _addDonationRow(group, window, title, address) {
+        const row = new Adw.ActionRow({
+            title,
+            subtitle: address,
+        });
+
+        const copyButton = new Gtk.Button({
+            icon_name: 'edit-copy-symbolic',
+            valign: Gtk.Align.CENTER,
+            css_classes: ['flat'],
+            tooltip_text: `Copy ${title} address`,
+        });
+        copyButton.connect('clicked', () => {
+            copyButton.get_clipboard().set(address);
+            window.add_toast(new Adw.Toast({
+                title: `${title} address copied to clipboard`,
+            }));
+        });
+        row.add_suffix(copyButton);
+        row.set_activatable_widget(copyButton);
+        group.add(row);
     }
 
     _addComboRow(settings, group, key, title, subtitle, labels, values) {
@@ -411,8 +525,6 @@ export default class BitaxeMonitorPreferences extends ExtensionPreferences {
         if (currentIndex >= 0) {
             row.set_selected(currentIndex);
         } else {
-            // Stored value isn't a known choice (schema drift / external edit);
-            // snap both the combo and the setting back to the default.
             row.set_selected(0);
             settings.set_string(key, values[0]);
         }
@@ -428,7 +540,6 @@ export default class BitaxeMonitorPreferences extends ExtensionPreferences {
         const devicesJson = settings.get_string('devices-json');
         const oldIp = settings.get_string('bitaxe-ip');
 
-        // If devices list is empty but old IP exists, migrate it
         if (devicesJson === '[]' && oldIp && oldIp !== '') {
             const device = {
                 id: generateId(),
