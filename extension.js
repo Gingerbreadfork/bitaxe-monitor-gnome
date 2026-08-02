@@ -534,8 +534,6 @@ class BitaxeIndicator extends PanelMenu.Button {
 
         this._farmCards = new Map();
         this._farmSignature = null;
-        this._farmColumns = 1;
-        this._farmCardWidth = 0;
 
         this._singleDeviceScrollView = new St.ScrollView({
             style_class: 'bitaxe-single-device-scroll',
@@ -1017,27 +1015,24 @@ class BitaxeIndicator extends PanelMenu.Button {
     _updateFarmView() {
         const columns = Math.max(1, Math.min(4, this._settings.get_int('farm-view-columns')));
         const descriptors = this._getFarmStatDescriptors();
-        const scaleFactor = St.ThemeContext.get_for_stage(global.stage).scale_factor;
 
         const signature = JSON.stringify({
             ids: this._devices.map(device => device.id),
             columns,
-            scaleFactor,
             stats: descriptors.map(descriptor => descriptor.key),
         });
 
         if (signature !== this._farmSignature) {
-            this._rebuildFarmView(columns, descriptors, scaleFactor);
+            this._rebuildFarmView(columns, descriptors);
             this._farmSignature = signature;
         } else {
             this._refreshFarmValues(descriptors);
         }
     }
 
-    _rebuildFarmView(columns, descriptors, scaleFactor) {
+    _rebuildFarmView(columns, descriptors) {
         this._farmViewBox.destroy_all_children();
         this._farmCards.clear();
-        this._farmColumns = columns;
 
         if (this._devices.length === 0) {
             const placeholder = new St.Label({
@@ -1048,35 +1043,34 @@ class BitaxeIndicator extends PanelMenu.Button {
             return;
         }
 
-        // 876 = .bitaxe-farm-view max-width (900px) minus its horizontal padding.
-        // CSS pixels are multiplied by the theme scale factor, so actor widths must be too.
-        const containerWidth = 876 * scaleFactor;
-        const totalMargin = columns * 8 * scaleFactor;
-        const totalSpacing = (columns - 1) * 8 * scaleFactor;
-        const availableWidth = containerWidth - totalMargin - totalSpacing;
-        this._farmCardWidth = Math.floor(availableWidth / columns);
-
         if (columns === 1) {
             for (const device of this._devices) {
                 this._farmViewBox.add_child(this._createFarmDeviceCard(device, descriptors));
             }
-        } else {
-            let currentRow = null;
-            let deviceCount = 0;
+            return;
+        }
 
-            for (const device of this._devices) {
-                if (deviceCount % columns === 0) {
-                    currentRow = new St.BoxLayout({
-                        style_class: 'bitaxe-farm-row',
-                        x_expand: false,
-                    });
-                    this._farmViewBox.add_child(currentRow);
-                }
+        let currentRow = null;
+        let deviceCount = 0;
 
-                const deviceCard = this._createFarmDeviceCard(device, descriptors);
-                deviceCard.set_width(this._farmCardWidth);
-                currentRow.add_child(deviceCard);
-                deviceCount++;
+        for (const device of this._devices) {
+            if (deviceCount % columns === 0) {
+                currentRow = new St.BoxLayout({
+                    style_class: 'bitaxe-farm-row',
+                    x_expand: true,
+                });
+                currentRow.layout_manager.homogeneous = true;
+                this._farmViewBox.add_child(currentRow);
+            }
+
+            currentRow.add_child(this._createFarmDeviceCard(device, descriptors));
+            deviceCount++;
+        }
+
+        const remainder = this._devices.length % columns;
+        if (remainder !== 0) {
+            for (let i = remainder; i < columns; i++) {
+                currentRow.add_child(new St.Widget({x_expand: true}));
             }
         }
     }
@@ -1115,9 +1109,6 @@ class BitaxeIndicator extends PanelMenu.Button {
         const oldCard = entry.card;
         const parent = oldCard.get_parent();
         const newCard = this._createFarmDeviceCard(device, descriptors);
-        if (this._farmColumns > 1) {
-            newCard.set_width(this._farmCardWidth);
-        }
         if (parent) {
             parent.replace_child(oldCard, newCard);
         }
@@ -1158,7 +1149,7 @@ class BitaxeIndicator extends PanelMenu.Button {
             style_class: 'bitaxe-farm-card',
             can_focus: true,
             track_hover: true,
-            x_expand: false,
+            x_expand: true,
         });
         cardButton.connect('clicked', () => {
             this._switchToView(device.id);
