@@ -1,4 +1,7 @@
 #!/bin/bash
+set -euo pipefail
+
+cd "$(dirname "${BASH_SOURCE[0]}")"
 
 EXTENSION_UUID="bitaxe-monitor@gingerbreadfork.github.io"
 INSTALL_DIR="$HOME/.local/share/gnome-shell/extensions/$EXTENSION_UUID"
