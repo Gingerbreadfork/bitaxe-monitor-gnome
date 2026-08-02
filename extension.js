@@ -12,8 +12,6 @@ import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 import * as ModalDialog from 'resource:///org/gnome/shell/ui/modalDialog.js';
 import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 
-const SPARKLINE_WIDTH = 88;
-const SPARKLINE_HEIGHT = 22;
 const SPARKLINE_PADDING = 2;
 const SPARKLINE_WINDOW_DEFAULT_MINUTES = 5;
 const SPARKLINE_MAX_POINTS_HARD_CAP = 4096;
@@ -31,7 +29,6 @@ class Sparkline {
             style_class: styleClass,
             reactive: false,
         });
-        this.actor.set_size(SPARKLINE_WIDTH, SPARKLINE_HEIGHT);
         this.actor.connect('repaint', this._onRepaint.bind(this));
         this.actor.connect('style-changed', () => this.actor.queue_repaint());
     }
@@ -996,22 +993,24 @@ class BitaxeIndicator extends PanelMenu.Button {
     _updateFarmView() {
         const columns = Math.max(1, Math.min(4, this._settings.get_int('farm-view-columns')));
         const descriptors = this._getFarmStatDescriptors();
+        const scaleFactor = St.ThemeContext.get_for_stage(global.stage).scale_factor;
 
         const signature = JSON.stringify({
             ids: this._devices.map(device => device.id),
             columns,
+            scaleFactor,
             stats: descriptors.map(descriptor => descriptor.key),
         });
 
         if (signature !== this._farmSignature) {
-            this._rebuildFarmView(columns, descriptors);
+            this._rebuildFarmView(columns, descriptors, scaleFactor);
             this._farmSignature = signature;
         } else {
             this._refreshFarmValues(descriptors);
         }
     }
 
-    _rebuildFarmView(columns, descriptors) {
+    _rebuildFarmView(columns, descriptors, scaleFactor) {
         this._farmViewBox.destroy_all_children();
         this._farmCards.clear();
         this._farmColumns = columns;
@@ -1025,9 +1024,11 @@ class BitaxeIndicator extends PanelMenu.Button {
             return;
         }
 
-        const containerWidth = 876;
-        const totalMargin = columns * 8;
-        const totalSpacing = (columns - 1) * 8;
+        // 876 = .bitaxe-farm-view max-width (900px) minus its horizontal padding.
+        // CSS pixels are multiplied by the theme scale factor, so actor widths must be too.
+        const containerWidth = 876 * scaleFactor;
+        const totalMargin = columns * 8 * scaleFactor;
+        const totalSpacing = (columns - 1) * 8 * scaleFactor;
         const availableWidth = containerWidth - totalMargin - totalSpacing;
         this._farmCardWidth = Math.floor(availableWidth / columns);
 
