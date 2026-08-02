@@ -278,8 +278,9 @@ class DeviceSelectorDialog extends ModalDialog.ModalDialog {
 
         for (const device of this._devices) {
             const deviceName = device.nickname || device.ip || 'Device';
+            const subtitle = device.ip && device.ip !== deviceName ? device.ip : null;
             const isSelected = this._currentView === device.id;
-            const button = this._createDeviceButton(deviceName, device.id, isSelected);
+            const button = this._createDeviceButton(deviceName, device.id, isSelected, subtitle);
             listBox.add_child(button);
         }
 
@@ -295,7 +296,7 @@ class DeviceSelectorDialog extends ModalDialog.ModalDialog {
         this.setInitialKeyFocus(farmButton);
     }
 
-    _createDeviceButton(label, id, isSelected) {
+    _createDeviceButton(label, id, isSelected, subtitle = null) {
         const button = new St.Button({
             style_class: 'device-selector-button',
             can_focus: true,
@@ -307,13 +308,30 @@ class DeviceSelectorDialog extends ModalDialog.ModalDialog {
             x_expand: true,
         });
 
-        const labelWidget = new St.Label({
-            text: label,
-            y_align: Clutter.ActorAlign.CENTER,
+        const textBox = new St.BoxLayout({
+            vertical: true,
             x_expand: true,
+            y_align: Clutter.ActorAlign.CENTER,
         });
 
-        box.add_child(labelWidget);
+        const labelWidget = new St.Label({
+            text: label,
+        });
+        textBox.add_child(labelWidget);
+
+        if (subtitle) {
+            const subtitleWidget = new St.Label({
+                text: subtitle,
+                style_class: 'device-selector-button-subtitle',
+            });
+            if (subtitleWidget.clutter_text) {
+                subtitleWidget.clutter_text.set_single_line_mode(true);
+                subtitleWidget.clutter_text.set_ellipsize(Pango.EllipsizeMode.END);
+            }
+            textBox.add_child(subtitleWidget);
+        }
+
+        box.add_child(textBox);
 
         if (isSelected) {
             const checkmark = new St.Label({

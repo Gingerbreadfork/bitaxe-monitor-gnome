@@ -210,6 +210,11 @@
     margin: 2px 8px;
 }
 
+.device-selector-button-subtitle {
+    font-size: 0.85em;
+    opacity: 0.7;
+}
+
 .device-selector-checkmark {
     font-weight: bold;
     color: rgba(125, 220, 111, 0.9);
