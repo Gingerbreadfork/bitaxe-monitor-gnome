@@ -1194,9 +1194,9 @@ class BitaxeIndicator extends PanelMenu.Button {
 
     _updateSingleDeviceStats(device, stats) {
         this._setStatValue('hashrate', this._formatHashrate(this._toNumber(stats.hashRate, 0)));
-        this._setStatValue('hashrate1m', this._formatHashrate(this._toNumber(stats.hashRate_1m, 0)));
-        this._setStatValue('hashrate10m', this._formatHashrate(this._toNumber(stats.hashRate_10m, 0)));
-        this._setStatValue('hashrate1h', this._formatHashrate(this._toNumber(stats.hashRate_1h, 0)));
+        this._setStatValue('hashrate1m', this._formatHashrate(this._toNumber(stats.hashRate_1m, NaN)));
+        this._setStatValue('hashrate10m', this._formatHashrate(this._toNumber(stats.hashRate_10m, NaN)));
+        this._setStatValue('hashrate1h', this._formatHashrate(this._toNumber(stats.hashRate_1h, NaN)));
 
         const errorPercentage = this._toNumber(stats.errorPercentage, 0);
         this._setStatValue('errorRate', `${errorPercentage.toFixed(2)}%`);
@@ -1643,7 +1643,11 @@ class BitaxeIndicator extends PanelMenu.Button {
     _formatHashrate(hashrate) {
         const unit = this._settings.get_string('hashrate-unit');
 
-        if (!Number.isFinite(hashrate) || hashrate === 0) {
+        if (!Number.isFinite(hashrate)) {
+            return '--';
+        }
+
+        if (hashrate === 0) {
             return unit === 'TH/s' ? '0.00 TH/s' : '0 GH/s';
         }
 
@@ -2237,9 +2241,9 @@ class BitaxeIndicator extends PanelMenu.Button {
         lines.push(`Model: ${model} (v${version})`);
 
         const hashrate = this._formatHashrate(this._toNumber(stats.hashRate, 0));
-        const hashrate1m = this._formatHashrate(this._toNumber(stats.hashRate_1m, 0));
-        const hashrate10m = this._formatHashrate(this._toNumber(stats.hashRate_10m, 0));
-        const hashrate1h = this._formatHashrate(this._toNumber(stats.hashRate_1h, 0));
+        const hashrate1m = this._formatHashrate(this._toNumber(stats.hashRate_1m, NaN));
+        const hashrate10m = this._formatHashrate(this._toNumber(stats.hashRate_10m, NaN));
+        const hashrate1h = this._formatHashrate(this._toNumber(stats.hashRate_1h, NaN));
         lines.push(`Hashrate: ${hashrate} (1m: ${hashrate1m}, 10m: ${hashrate10m}, 1h: ${hashrate1h})`);
 
         const asicTemp = Math.round(this._toNumber(stats.temp, 0));
