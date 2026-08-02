@@ -632,6 +632,7 @@ class BitaxeIndicator extends PanelMenu.Button {
 
         this._addSection(this._rightColumn, 'Pool', [
             {key: 'pool', label: 'Pool'},
+            {key: 'poolPort', label: 'Pool Port'},
             {key: 'poolDifficulty', label: 'Pool Diff'},
             {key: 'fallbackPool', label: 'Fallback Pool'},
         ]);
@@ -1319,6 +1320,9 @@ class BitaxeIndicator extends PanelMenu.Button {
         this._setStatValue('overclock', overclockEnabled ? 'Enabled' : 'Disabled');
 
         this._setStatValue('pool', stats.stratumURL || 'Not connected');
+
+        const poolPort = this._toNumber(stats.stratumPort, 0);
+        this._setStatValue('poolPort', poolPort > 0 ? `${poolPort}` : '--');
 
         const poolDiff = this._toNumber(stats.poolDifficulty, 0);
         this._setStatValue('poolDifficulty', this._formatDifficulty(poolDiff));
@@ -2464,7 +2468,10 @@ class BitaxeIndicator extends PanelMenu.Button {
             lines.push(`Best Diff: All-Time ${this._formatDifficulty(bestDiff)} | Session ${this._formatDifficulty(bestSessionDiff)}`);
         }
 
-        const pool = stats.stratumURL || 'Not connected';
+        const sharePoolPort = this._toNumber(stats.stratumPort, 0);
+        const pool = stats.stratumURL
+            ? `${stats.stratumURL}${sharePoolPort > 0 ? `:${sharePoolPort}` : ''}`
+            : 'Not connected';
         lines.push(`Pool: ${pool}`);
 
         const uptime = this._formatUptime(stats.uptimeSeconds);
