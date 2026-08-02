@@ -986,9 +986,10 @@ class BitaxeIndicator extends PanelMenu.Button {
             });
         }
         if (s.get_boolean('farm-show-pool')) {
-            add('pool', 'Pool', stats => {
-                const pool = stats.stratumURL || '--';
-                return pool.length > 30 ? pool.substring(0, 27) + '...' : pool;
+            add('pool', 'Pool', stats => stats.stratumURL || '--');
+            add('pool-port', 'Pool Port', stats => {
+                const port = this._toNumber(stats.stratumPort, 0);
+                return port > 0 ? `${port}` : '--';
             });
         }
         if (s.get_boolean('farm-show-uptime')) {
@@ -1222,6 +1223,10 @@ class BitaxeIndicator extends PanelMenu.Button {
                     x_expand: true,
                     x_align: Clutter.ActorAlign.END,
                 });
+                if (valueWidget.clutter_text) {
+                    valueWidget.clutter_text.set_single_line_mode(true);
+                    valueWidget.clutter_text.set_ellipsize(Pango.EllipsizeMode.END);
+                }
                 row.add_child(labelWidget);
                 row.add_child(valueWidget);
                 grid.add_child(row);
