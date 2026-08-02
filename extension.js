@@ -516,6 +516,7 @@ class BitaxeIndicator extends PanelMenu.Button {
             hscrollbar_policy: St.PolicyType.NEVER,
             vscrollbar_policy: St.PolicyType.AUTOMATIC,
             overlay_scrollbars: true,
+            x_expand: true,
         });
         this._farmViewBox = new St.BoxLayout({
             vertical: true,
