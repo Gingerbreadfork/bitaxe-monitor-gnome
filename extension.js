@@ -1225,7 +1225,6 @@ class BitaxeIndicator extends PanelMenu.Button {
                     text: descriptor.fn(stats),
                     style_class: 'bitaxe-farm-stat-value',
                     x_expand: true,
-                    x_align: Clutter.ActorAlign.END,
                 });
                 if (valueWidget.clutter_text) {
                     valueWidget.clutter_text.set_single_line_mode(true);

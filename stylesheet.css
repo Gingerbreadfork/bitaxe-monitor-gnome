@@ -330,6 +330,7 @@
     font-weight: 600;
     font-family: monospace;
     font-feature-settings: "tnum";
+    text-align: right;
 }
 
 .bitaxe-farm-value-warning {
