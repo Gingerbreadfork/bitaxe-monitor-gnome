@@ -1365,7 +1365,7 @@ class BitaxeIndicator extends PanelMenu.Button {
                 }
                 this._hasFetchedStats = true;
                 this._updateUI();
-                if (stats && device.id === this._currentView) {
+                if (stats) {
                     this._pushDeviceSparklines(device.id, stats);
                 }
             })
@@ -1973,11 +1973,7 @@ class BitaxeIndicator extends PanelMenu.Button {
     }
 
     _pushDeviceSparkline(deviceId, key, value) {
-        const deviceSparklines = this._deviceSparklines.get(deviceId);
-        if (!deviceSparklines) {
-            return;
-        }
-        const sparkline = deviceSparklines.get(key);
+        const sparkline = this._ensureDeviceSparkline(deviceId, key);
         if (!sparkline) {
             return;
         }
