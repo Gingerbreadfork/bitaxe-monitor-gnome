@@ -793,6 +793,9 @@ class BitaxeIndicator extends PanelMenu.Button {
             this._settings.set_string('bitaxe-ip', '');
         }
 
+        this._activeFetchGeneration++;
+        this._inFlightDevices.clear();
+
         const activeDeviceIds = new Set(this._devices.map(device => device.id));
         for (const deviceId of this._deviceStats.keys()) {
             if (!activeDeviceIds.has(deviceId)) {
