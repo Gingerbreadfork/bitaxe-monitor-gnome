@@ -960,7 +960,7 @@ class BitaxeIndicator extends PanelMenu.Button {
             add('error-rate', 'Error Rate', stats => `${this._toNumber(stats.errorPercentage, 0).toFixed(2)}%`);
         }
         if (s.get_boolean('farm-show-best-diff')) {
-            add('best-diff', 'Best Diff', stats => this._formatDifficulty(this._toNumber(stats.bestDiff, 0)));
+            add('best-diff', 'Best Diff', stats => this._formatDifficulty(this._parseDifficulty(stats.bestDiff)));
         }
         if (s.get_boolean('farm-show-fan')) {
             add('fan', 'Fan', stats => {
@@ -1251,10 +1251,10 @@ class BitaxeIndicator extends PanelMenu.Button {
         this._setStatValue('sharesAccepted', this._formatCount(sharesAccepted));
         this._setStatValue('sharesRejected', this._formatCount(sharesRejected));
 
-        const bestDiff = this._toNumber(stats.bestDiff, 0);
+        const bestDiff = this._parseDifficulty(stats.bestDiff);
         this._setStatValue('bestDiff', this._formatDifficulty(bestDiff));
 
-        const bestSessionDiff = this._toNumber(stats.bestSessionDiff, 0);
+        const bestSessionDiff = this._parseDifficulty(stats.bestSessionDiff);
         this._setStatValue('bestSessionDiff', this._formatDifficulty(bestSessionDiff));
 
         this._setStatValue('uptime', this._formatUptime(stats.uptimeSeconds));
@@ -1713,6 +1713,22 @@ class BitaxeIndicator extends PanelMenu.Button {
         return `${minutes}m`;
     }
 
+    _parseDifficulty(value) {
+        const direct = this._toNumber(value, NaN);
+        if (Number.isFinite(direct)) {
+            return direct;
+        }
+        if (typeof value !== 'string') {
+            return NaN;
+        }
+        const match = value.trim().match(/^(\d+(?:\.\d+)?)\s*([kmgtpe])$/i);
+        if (!match) {
+            return NaN;
+        }
+        const multipliers = {k: 1e3, m: 1e6, g: 1e9, t: 1e12, p: 1e15, e: 1e18};
+        return Number(match[1]) * multipliers[match[2].toLowerCase()];
+    }
+
     _formatDifficulty(value) {
         if (!Number.isFinite(value) || value <= 0) {
             return '--';
@@ -1721,7 +1737,7 @@ class BitaxeIndicator extends PanelMenu.Button {
         if (value >= 1e12) {
             return `${(value / 1e12).toFixed(2)}T`;
         } else if (value >= 1e9) {
-            return `${(value / 1e9).toFixed(2)}B`;
+            return `${(value / 1e9).toFixed(2)}G`;
         } else if (value >= 1e6) {
             return `${(value / 1e6).toFixed(2)}M`;
         } else if (value >= 1e3) {
@@ -2251,8 +2267,8 @@ class BitaxeIndicator extends PanelMenu.Button {
         const errorPercentage = this._toNumber(stats.errorPercentage, 0).toFixed(2);
         lines.push(`Shares: ${sharesAccepted} accepted | ${sharesRejected} rejected (${errorPercentage}% error)`);
 
-        const bestDiff = this._toNumber(stats.bestDiff, 0);
-        const bestSessionDiff = this._toNumber(stats.bestSessionDiff, 0);
+        const bestDiff = this._parseDifficulty(stats.bestDiff);
+        const bestSessionDiff = this._parseDifficulty(stats.bestSessionDiff);
         if (bestDiff > 0) {
             lines.push(`Best Diff: All-Time ${this._formatDifficulty(bestDiff)} | Session ${this._formatDifficulty(bestSessionDiff)}`);
         }
