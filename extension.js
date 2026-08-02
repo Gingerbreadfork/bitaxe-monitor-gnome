@@ -355,8 +355,7 @@ class BitaxeIndicator extends PanelMenu.Button {
         this._timeoutId = null;
         this._devicesChangedDebounceId = null;
         this._copyStatsFeedbackTimeoutId = null;
-        this._inFlight = false;
-        this._fetchGeneration = 0;
+        this._inFlightDevices = new Set();
         this._activeFetchGeneration = 0;
         this._devices = [];
         this._deviceStats = new Map();
@@ -1349,37 +1348,35 @@ class BitaxeIndicator extends PanelMenu.Button {
             this._updateLabel(STATUS_CONNECTING);
         }
 
-        if (this._inFlight) {
+        const devicesToFetch = this._devices.filter(device => !this._inFlightDevices.has(device.id));
+        if (devicesToFetch.length === 0) {
             return;
         }
 
-        this._inFlight = true;
         this._setRefreshButtonBusy(true);
 
-        const fetchGeneration = ++this._fetchGeneration;
-        this._activeFetchGeneration = fetchGeneration;
-        const fetchPromises = this._devices.map(device =>
-            this._fetchDeviceStats(device, fetchGeneration).then(stats => {
-                if (fetchGeneration !== this._activeFetchGeneration) {
-                    return;
-                }
-                this._hasFetchedStats = true;
-                this._updateUI();
-                if (stats) {
-                    this._pushDeviceSparklines(device.id, stats);
-                }
-            })
-        );
-
-        Promise.all(fetchPromises).finally(() => {
-            if (fetchGeneration !== this._activeFetchGeneration) {
-                return;
-            }
-            this._inFlight = false;
-            this._setRefreshButtonBusy(false);
-            this._hasFetchedStats = true;
-            this._updateUI();
-        });
+        const fetchGeneration = this._activeFetchGeneration;
+        for (const device of devicesToFetch) {
+            this._inFlightDevices.add(device.id);
+            this._fetchDeviceStats(device, fetchGeneration)
+                .then(stats => {
+                    if (fetchGeneration !== this._activeFetchGeneration) {
+                        return;
+                    }
+                    this._hasFetchedStats = true;
+                    this._updateUI();
+                    if (stats) {
+                        this._pushDeviceSparklines(device.id, stats);
+                    }
+                })
+                .finally(() => {
+                    if (fetchGeneration !== this._activeFetchGeneration) {
+                        return;
+                    }
+                    this._inFlightDevices.delete(device.id);
+                    this._setRefreshButtonBusy(this._inFlightDevices.size > 0);
+                });
+        }
     }
 
     _fetchDeviceStats(device, fetchGeneration) {
@@ -2094,11 +2091,11 @@ class BitaxeIndicator extends PanelMenu.Button {
         this._isPaused = next;
 
         if (this._isPaused) {
-            if (this._inFlight && this._cancellable) {
+            if (this._inFlightDevices.size > 0 && this._cancellable) {
                 this._activeFetchGeneration++;
                 this._cancellable.cancel();
                 this._cancellable = new Gio.Cancellable();
-                this._inFlight = false;
+                this._inFlightDevices.clear();
             }
             this._setRefreshButtonBusy(false);
             this._setStatValue('updatedLast', 'Paused');
@@ -2383,7 +2380,7 @@ class BitaxeIndicator extends PanelMenu.Button {
 
     destroy() {
         this._activeFetchGeneration++;
-        this._inFlight = false;
+        this._inFlightDevices.clear();
 
         if (this._timeoutId) {
             GLib.source_remove(this._timeoutId);
