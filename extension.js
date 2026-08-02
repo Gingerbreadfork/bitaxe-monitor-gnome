@@ -759,11 +759,15 @@ class BitaxeIndicator extends PanelMenu.Button {
     _loadDevices() {
         const devicesJson = this._settings.get_string('devices-json');
         const oldIp = this._settings.get_string('bitaxe-ip');
+        let parsed;
         try {
-            this._devices = JSON.parse(devicesJson);
+            parsed = JSON.parse(devicesJson);
         } catch (e) {
-            this._devices = [];
+            parsed = [];
         }
+        this._devices = Array.isArray(parsed)
+            ? parsed.filter(device => device && typeof device === 'object' && typeof device.id === 'string')
+            : [];
 
         if (this._devices.length === 0) {
             if (oldIp && oldIp !== '') {

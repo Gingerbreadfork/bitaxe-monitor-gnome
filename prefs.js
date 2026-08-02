@@ -7,6 +7,16 @@ function generateId() {
     return `device-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
 }
 
+function parseDevices(json) {
+    let parsed;
+    try {
+        parsed = JSON.parse(json);
+    } catch (e) {
+        parsed = [];
+    }
+    return Array.isArray(parsed) ? parsed : [];
+}
+
 const DeviceRow = GObject.registerClass(
 class DeviceRow extends Adw.ExpanderRow {
     _init(device, onUpdate, onDelete) {
@@ -105,13 +115,7 @@ export default class BitaxeMonitorPreferences extends ExtensionPreferences {
                 child = next;
             }
 
-            const devicesJson = settings.get_string('devices-json');
-            let devices = [];
-            try {
-                devices = JSON.parse(devicesJson);
-            } catch (e) {
-                devices = [];
-            }
+            const devices = parseDevices(settings.get_string('devices-json'));
 
             if (devices.length === 0) {
                 const placeholder = new Gtk.Label({
@@ -158,13 +162,7 @@ export default class BitaxeMonitorPreferences extends ExtensionPreferences {
         };
 
         addDeviceButton.connect('clicked', () => {
-            const devicesJson = settings.get_string('devices-json');
-            let devices = [];
-            try {
-                devices = JSON.parse(devicesJson);
-            } catch (e) {
-                devices = [];
-            }
+            const devices = parseDevices(settings.get_string('devices-json'));
 
             const newDevice = {
                 id: generateId(),
