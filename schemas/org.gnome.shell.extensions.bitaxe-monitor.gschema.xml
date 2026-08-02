@@ -226,5 +226,27 @@
       <summary>Farm: Show Voltage</summary>
       <description>Show voltage in farm view device cards</description>
     </key>
+    <key name="notify-on-offline" type="b">
+      <default>false</default>
+      <summary>Notify on Offline</summary>
+      <description>Send a notification when a device goes offline or comes back online</description>
+    </key>
+    <key name="notify-temp-threshold" type="i">
+      <default>0</default>
+      <range min="0" max="110"/>
+      <summary>Temperature Alert Threshold</summary>
+      <description>Notify when ASIC temperature reaches this many degrees Celsius (0 disables)</description>
+    </key>
+    <key name="notify-on-hashrate-drop" type="b">
+      <default>false</default>
+      <summary>Notify on Zero Hashrate</summary>
+      <description>Send a notification when a device keeps reporting zero hashrate</description>
+    </key>
+    <key name="notify-error-threshold" type="i">
+      <default>0</default>
+      <range min="0" max="100"/>
+      <summary>Error Rate Alert Threshold</summary>
+      <description>Notify when share error rate reaches this percentage (0 disables)</description>
+    </key>
   </schema>
 </schemalist>

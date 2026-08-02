@@ -369,6 +369,52 @@ export default class BitaxeMonitorPreferences extends ExtensionPreferences {
             ['auto', 'GH/s', 'TH/s']
         );
 
+        const alertsPage = new Adw.PreferencesPage({
+            title: 'Alerts',
+            icon_name: 'preferences-system-notifications-symbolic',
+        });
+        window.add(alertsPage);
+
+        const notifyGroup = new Adw.PreferencesGroup({
+            title: 'Notifications',
+            description: 'Send desktop notifications when a device needs attention. Notifications follow your system Do Not Disturb setting.',
+        });
+        alertsPage.add(notifyGroup);
+
+        addSwitchRow(notifyGroup, 'notify-on-offline', 'Offline Alerts', 'Notify when a device goes offline or comes back online');
+
+        const tempAlertRow = new Adw.SpinRow({
+            title: 'Temperature Alert',
+            subtitle: 'Notify when ASIC temperature reaches this many °C (0 disables)',
+            adjustment: new Gtk.Adjustment({
+                lower: 0,
+                upper: 110,
+                step_increment: 1,
+            }),
+        });
+        tempAlertRow.set_value(settings.get_int('notify-temp-threshold'));
+        tempAlertRow.connect('notify::value', (widget) => {
+            settings.set_int('notify-temp-threshold', Math.round(widget.get_value()));
+        });
+        notifyGroup.add(tempAlertRow);
+
+        addSwitchRow(notifyGroup, 'notify-on-hashrate-drop', 'Zero Hashrate Alert', 'Notify when a device keeps reporting 0 hashrate');
+
+        const errorAlertRow = new Adw.SpinRow({
+            title: 'Error Rate Alert',
+            subtitle: 'Notify when share error rate reaches this percentage (0 disables)',
+            adjustment: new Gtk.Adjustment({
+                lower: 0,
+                upper: 100,
+                step_increment: 1,
+            }),
+        });
+        errorAlertRow.set_value(settings.get_int('notify-error-threshold'));
+        errorAlertRow.connect('notify::value', (widget) => {
+            settings.set_int('notify-error-threshold', Math.round(widget.get_value()));
+        });
+        notifyGroup.add(errorAlertRow);
+
         const aboutPage = new Adw.PreferencesPage({
             title: 'About',
             icon_name: 'help-about-symbolic',

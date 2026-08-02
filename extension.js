@@ -16,6 +16,9 @@ const SPARKLINE_PADDING = 2;
 const SPARKLINE_WINDOW_DEFAULT_MINUTES = 5;
 const SPARKLINE_MAX_POINTS_HARD_CAP = 4096;
 const HTTP_REQUEST_TIMEOUT_SECONDS = 10;
+const OFFLINE_NOTIFY_FAILURES = 3;
+const ZERO_HASHRATE_NOTIFY_SAMPLES = 3;
+const TEMP_ALERT_HYSTERESIS_C = 3;
 const STATUS_NO_DEVICES = 'No devices';
 const STATUS_CONNECTING = 'Connecting...';
 
@@ -375,6 +378,7 @@ class BitaxeIndicator extends PanelMenu.Button {
         this._devices = [];
         this._deviceStats = new Map();
         this._deviceSparklines = new Map();
+        this._deviceAlertStates = new Map();
         this._hasFetchedStats = false;
         this._pendingPanelLabelText = null;
         this._sparklineWindowSeconds = this._getSparklineWindowSeconds();
@@ -793,6 +797,11 @@ class BitaxeIndicator extends PanelMenu.Button {
         for (const deviceId of this._deviceStats.keys()) {
             if (!activeDeviceIds.has(deviceId)) {
                 this._deviceStats.delete(deviceId);
+            }
+        }
+        for (const deviceId of this._deviceAlertStates.keys()) {
+            if (!activeDeviceIds.has(deviceId)) {
+                this._deviceAlertStates.delete(deviceId);
             }
         }
         for (const [deviceId, sparklines] of this._deviceSparklines.entries()) {
@@ -1442,6 +1451,7 @@ class BitaxeIndicator extends PanelMenu.Button {
                         return;
                     }
                     this._hasFetchedStats = true;
+                    this._checkDeviceAlerts(device, stats);
                     this._updateUI();
                     if (stats) {
                         this._pushDeviceSparklines(device.id, stats);
@@ -1519,6 +1529,101 @@ class BitaxeIndicator extends PanelMenu.Button {
                 }
             );
         });
+    }
+
+    _getDeviceAlertState(deviceId) {
+        let state = this._deviceAlertStates.get(deviceId);
+        if (!state) {
+            state = {
+                failCount: 0,
+                notifiedOffline: false,
+                tempAlerted: false,
+                zeroCount: 0,
+                zeroAlerted: false,
+                errorAlerted: false,
+            };
+            this._deviceAlertStates.set(deviceId, state);
+        }
+        return state;
+    }
+
+    _notify(body) {
+        Main.notify('Bitaxe Monitor', body);
+    }
+
+    _checkDeviceAlerts(device, stats) {
+        if (!this._getDeviceTargetInfo(device)) {
+            return;
+        }
+
+        const state = this._getDeviceAlertState(device.id);
+        const name = device.nickname || device.ip || 'Device';
+
+        if (!stats) {
+            state.failCount++;
+            if (this._settings.get_boolean('notify-on-offline') &&
+                !state.notifiedOffline &&
+                state.failCount >= OFFLINE_NOTIFY_FAILURES) {
+                state.notifiedOffline = true;
+                this._notify(`${name} is offline`);
+            }
+            return;
+        }
+
+        state.failCount = 0;
+        if (state.notifiedOffline) {
+            state.notifiedOffline = false;
+            if (this._settings.get_boolean('notify-on-offline')) {
+                this._notify(`${name} is back online`);
+            }
+        }
+
+        const tempThreshold = this._settings.get_int('notify-temp-threshold');
+        const temp = this._toNumber(stats.temp, NaN);
+        if (tempThreshold > 0 && Number.isFinite(temp)) {
+            if (temp >= tempThreshold) {
+                if (!state.tempAlerted) {
+                    state.tempAlerted = true;
+                    this._notify(`${name}: ASIC temperature ${Math.round(temp)}°C (limit ${tempThreshold}°C)`);
+                }
+            } else if (temp <= tempThreshold - TEMP_ALERT_HYSTERESIS_C) {
+                state.tempAlerted = false;
+            }
+        } else {
+            state.tempAlerted = false;
+        }
+
+        if (this._settings.get_boolean('notify-on-hashrate-drop')) {
+            const hashrate = this._toNumber(stats.hashRate, NaN);
+            if (hashrate === 0) {
+                state.zeroCount++;
+                if (!state.zeroAlerted && state.zeroCount >= ZERO_HASHRATE_NOTIFY_SAMPLES) {
+                    state.zeroAlerted = true;
+                    this._notify(`${name}: hashrate has dropped to 0`);
+                }
+            } else if (Number.isFinite(hashrate) && hashrate > 0) {
+                state.zeroCount = 0;
+                state.zeroAlerted = false;
+            }
+        } else {
+            state.zeroCount = 0;
+            state.zeroAlerted = false;
+        }
+
+        const errorThreshold = this._settings.get_int('notify-error-threshold');
+        const errorRate = this._toNumber(stats.errorPercentage, NaN);
+        if (errorThreshold > 0 && Number.isFinite(errorRate)) {
+            if (errorRate >= errorThreshold) {
+                if (!state.errorAlerted) {
+                    state.errorAlerted = true;
+                    this._notify(`${name}: error rate ${errorRate.toFixed(1)}% (limit ${errorThreshold}%)`);
+                }
+            } else {
+                state.errorAlerted = false;
+            }
+        } else {
+            state.errorAlerted = false;
+        }
     }
 
     _updateUI() {
