@@ -1174,7 +1174,7 @@ class BitaxeIndicator extends PanelMenu.Button {
     _updateSingleDeviceView() {
         const device = this._devices.find(d => d.id === this._currentView);
         if (!device) {
-            this._clearStatsUI('No device selected');
+            this._clearStatsUI();
             return;
         }
 
@@ -1182,7 +1182,7 @@ class BitaxeIndicator extends PanelMenu.Button {
 
         const stats = this._deviceStats.get(device.id);
         if (!stats) {
-            this._clearStatsUI(STATUS_CONNECTING);
+            this._clearStatsUI();
             return;
         }
 
@@ -2179,9 +2179,7 @@ class BitaxeIndicator extends PanelMenu.Button {
         }
     }
 
-    _clearStatsUI(labelText) {
-        this._updateLabel(labelText);
-
+    _clearStatsUI() {
         for (const label of this._statValueLabels.values()) {
             label.text = '--';
         }
