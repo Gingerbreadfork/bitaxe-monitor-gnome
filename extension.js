@@ -2292,6 +2292,7 @@ class BitaxeIndicator extends PanelMenu.Button {
             this._pendingPanelLabelText = null;
             this._label.text = 'Paused';
         } else {
+            this._updateUI();
             this._fetchAllDevices();
         }
 
