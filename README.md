@@ -19,6 +19,7 @@ A comprehensive GNOME Shell extension for monitoring your Bitaxe mining devices.
 ### Multi-Device Support
 - **Manage unlimited devices** - Add multiple Bitaxe devices with custom nicknames
 - **Farm View** - Grid layout showing all devices at once (1-4 columns)
+- **Interactive Farm Cards** - Click a card to jump to that device's detailed view, or use its ↗ shortcut to open the device's web UI
 - **Single Device View** - Detailed statistics for individual devices
 - **Quick View Switching** - Easy toggle between farm and device views
 - **Auto Detection** - Automatically switches to farm view when 2+ devices are configured
@@ -57,7 +58,7 @@ A comprehensive GNOME Shell extension for monitoring your Bitaxe mining devices.
   - Mining efficiency (GH/W) with sparklines
 
 - **Mining Stats**
-  - Pool information
+  - Pool host and port
   - Pool difficulty
   - Fallback pool
   - Shares accepted/rejected
@@ -76,25 +77,35 @@ A comprehensive GNOME Shell extension for monitoring your Bitaxe mining devices.
   - Wi-Fi RSSI (signal strength)
   - Free heap memory
 
+### Alerts & Notifications
+Optional desktop notifications when a device needs attention — all off by default:
+- **Offline Alerts** - When a device stops responding, and again when it comes back online
+- **Temperature Alert** - When ASIC temperature reaches your threshold
+- **Zero Hashrate Alert** - When a device keeps reporting 0 hashrate
+- **Error Rate Alert** - When the share error rate crosses your threshold
+
+Notifications fire once per event rather than repeating, and follow your system Do Not Disturb setting.
+
 ### Visual Features
 - **Interactive Sparklines** - Real-time history graphs for key metrics
   - Configurable time window (1-60 minutes)
   - 12 color themes (colorful, monochrome, blue, green, amber, purple, red, cyan, orange, pink, lime, teal)
   - Smooth animations and auto-scaling
+- **Temperature Warnings** - Farm card temps tint amber at the device's target temperature and red above it
 
 ### Farm View Customization
 Configure which stats to display for each device in farm view:
 - Hashrate, temperatures (ASIC/VRM), power, voltage
 - Mining efficiency, shares, error rate
 - Best difficulty, fan speed, frequency
-- Mining pool, uptime, device model
+- Mining pool and port, uptime, device model
 
 ### Convenience Features
 - **Pause/Resume** - Temporarily stop fetching stats
 - **Copy Stats** - Export device or farm stats to clipboard
-- **Open Web UI** - Quick access to Bitaxe web interface
+- **Open Web UI** - Quick access to a device's web interface (also available per card in farm view)
 - **Refresh Now** - Manual refresh on demand
-- **Auto-Refresh** - Configurable interval (1-60 seconds)
+- **Auto-Refresh** - Configurable interval (1-60 seconds); a slow device never delays the others
 
 ## Installation
 
@@ -151,7 +162,7 @@ cd bitaxe-monitor-gnome
    - Enter the IP address or hostname (e.g., `192.168.1.100`)
    - Repeat for additional devices
 
-3. Customize your experience in the **Display** tab
+3. Customize your experience in the **Display** and **Alerts** tabs
 
 ### Settings Overview
 
@@ -170,6 +181,12 @@ cd bitaxe-monitor-gnome
 - **Sparkline Theme** - Select from 12 color themes
 - **Network Info** - Show/hide network details
 - **Appearance** - Customize separators and hashrate units
+
+#### Alerts Tab
+- **Offline Alerts** - Notify when devices go offline or recover
+- **Temperature Alert** - ASIC temperature threshold in °C (0 disables)
+- **Zero Hashrate Alert** - Notify when hashrate flatlines at 0
+- **Error Rate Alert** - Share error rate threshold in percent (0 disables)
 
 ## AxeOS API
 
@@ -194,6 +211,9 @@ The API returns comprehensive system information including:
 ### Tested Devices
 - ✅ Bitaxe Gamma 602
 - ✅ Bitaxe Supra (community confirmed)
+
+### Firmware Compatibility
+Built against current ESP-Miner (v2.x) releases and tolerant of older ones: fields that older firmware doesn't report (hashrate averages, pool port) show as `--`, and legacy string-formatted difficulty values ("1.37G") are parsed correctly.
 
 ## Troubleshooting
 
@@ -264,8 +284,10 @@ If the extension feels sluggish with many devices:
 ### For Multi-Device Farms
 - Use descriptive nicknames ("Garage-1", "Office-2", etc.)
 - Enable farm view with 2-3 columns for best visibility
+- Click any farm card to drill into that device's details
 - Customize farm stats to show only what matters
 - Use aggregate panel mode for total hashrate/power
+- Turn on offline alerts so a dead miner doesn't go unnoticed
 - Copy stats to clipboard for record keeping
 
 ### Display Optimization
