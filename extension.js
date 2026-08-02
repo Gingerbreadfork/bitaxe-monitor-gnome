@@ -1453,6 +1453,10 @@ class BitaxeIndicator extends PanelMenu.Button {
     }
 
     _updatePanelDisplay() {
+        if (this._isPaused) {
+            return;
+        }
+
         const panelMode = this._settings.get_string('panel-display-mode');
 
         if (this._devices.length === 0) {
