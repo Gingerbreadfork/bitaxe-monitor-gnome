@@ -258,12 +258,32 @@
 }
 
 .bitaxe-farm-card {
-    spacing: 8px;
     padding: 12px;
     margin: 4px;
     border-radius: 8px;
     background-color: rgba(255, 255, 255, 0.05);
     min-width: 180px;
+}
+
+.bitaxe-farm-card:hover,
+.bitaxe-farm-card:focus {
+    background-color: rgba(127, 127, 127, 0.2);
+}
+
+.bitaxe-farm-card-content {
+    spacing: 8px;
+}
+
+.bitaxe-farm-card-webui {
+    padding: 0 6px;
+    margin-right: 6px;
+    border-radius: 6px;
+    font-weight: 700;
+}
+
+.bitaxe-farm-card-webui:hover,
+.bitaxe-farm-card-webui:focus {
+    background-color: rgba(127, 127, 127, 0.3);
 }
 
 .bitaxe-farm-card-header {
@@ -311,4 +331,12 @@
     font-weight: 600;
     font-family: monospace;
     font-feature-settings: "tnum";
+}
+
+.bitaxe-farm-value-warning {
+    color: rgba(240, 195, 109, 1);
+}
+
+.bitaxe-farm-value-critical {
+    color: rgba(255, 93, 93, 1);
 }

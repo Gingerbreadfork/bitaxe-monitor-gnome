@@ -715,16 +715,7 @@ class BitaxeIndicator extends PanelMenu.Button {
             track_hover: true,
         });
         openWebUIButton.connect('clicked', () => {
-            const uri = this._getBitaxeWebUIUri();
-            if (!uri) {
-                return;
-            }
-            this.menu.close();
-            try {
-                Gio.AppInfo.launch_default_for_uri(uri, null);
-            } catch (error) {
-                console.error(`[bitaxe-monitor] Failed to open Bitaxe Web UI: ${uri}`, error);
-            }
+            this._openWebUIForUri(this._getBitaxeWebUIUri());
         });
 
         const pauseButton = new St.Button({
@@ -943,13 +934,15 @@ class BitaxeIndicator extends PanelMenu.Button {
     _getFarmStatDescriptors() {
         const s = this._settings;
         const descriptors = [];
-        const add = (key, label, fn) => descriptors.push({key, label, fn});
+        const add = (key, label, fn, styleFn = null) => descriptors.push({key, label, fn, styleFn});
 
         if (s.get_boolean('farm-show-hashrate')) {
             add('hashrate', 'Hashrate', stats => this._formatHashrate(this._toNumber(stats.hashRate, 0)));
         }
         if (s.get_boolean('farm-show-asic-temp')) {
-            add('asic-temp', 'ASIC Temp', stats => `${Math.round(this._toNumber(stats.temp, 0))}°C`);
+            add('asic-temp', 'ASIC Temp',
+                stats => `${Math.round(this._toNumber(stats.temp, 0))}°C`,
+                stats => this._getTempWarningClass(stats));
         }
         if (s.get_boolean('farm-show-vrm-temp')) {
             add('vrm-temp', 'VRM Temp', stats => `${Math.round(this._toNumber(stats.vrTemp, 0))}°C`);
@@ -1094,6 +1087,7 @@ class BitaxeIndicator extends PanelMenu.Button {
                     const label = entry.valueLabels.get(descriptor.key);
                     if (label) {
                         label.text = descriptor.fn(stats);
+                        this._applyFarmValueStyle(label, descriptor, stats);
                     }
                 }
             }
@@ -1117,12 +1111,52 @@ class BitaxeIndicator extends PanelMenu.Button {
         oldCard.destroy();
     }
 
+    _getTempWarningClass(stats) {
+        const temp = this._toNumber(stats.temp, NaN);
+        const target = this._toNumber(stats.temptarget, NaN);
+        if (!Number.isFinite(temp) || !Number.isFinite(target) || target <= 0) {
+            return null;
+        }
+        if (temp >= target + 5) {
+            return 'bitaxe-farm-value-critical';
+        }
+        if (temp >= target) {
+            return 'bitaxe-farm-value-warning';
+        }
+        return null;
+    }
+
+    _applyFarmValueStyle(label, descriptor, stats) {
+        if (!descriptor.styleFn) {
+            return;
+        }
+        const styleClass = descriptor.styleFn(stats);
+        for (const name of ['bitaxe-farm-value-warning', 'bitaxe-farm-value-critical']) {
+            if (name === styleClass) {
+                label.add_style_class_name(name);
+            } else {
+                label.remove_style_class_name(name);
+            }
+        }
+    }
+
     _createFarmDeviceCard(device, descriptors) {
-        const card = new St.BoxLayout({
+        const cardButton = new St.Button({
             style_class: 'bitaxe-farm-card',
-            vertical: true,
+            can_focus: true,
+            track_hover: true,
             x_expand: false,
         });
+        cardButton.connect('clicked', () => {
+            this._switchToView(device.id);
+        });
+
+        const card = new St.BoxLayout({
+            style_class: 'bitaxe-farm-card-content',
+            vertical: true,
+            x_expand: true,
+        });
+        cardButton.set_child(card);
 
         const stats = this._deviceStats.get(device.id);
 
@@ -1136,6 +1170,21 @@ class BitaxeIndicator extends PanelMenu.Button {
             x_expand: true,
         });
         header.add_child(nicknameLabel);
+
+        if (this._getDeviceTargetInfo(device)) {
+            const webUIButton = new St.Button({
+                label: '↗',
+                style_class: 'bitaxe-farm-card-webui',
+                can_focus: true,
+                track_hover: true,
+            });
+            webUIButton.connect('clicked', () => {
+                const currentDevice = this._devices.find(d => d.id === device.id) || device;
+                const target = this._getDeviceTargetInfo(currentDevice);
+                this._openWebUIForUri(target ? target.baseUri : null);
+            });
+            header.add_child(webUIButton);
+        }
 
         const statusLabel = new St.Label({
             text: stats ? '●' : '○',
@@ -1177,20 +1226,21 @@ class BitaxeIndicator extends PanelMenu.Button {
                 row.add_child(valueWidget);
                 grid.add_child(row);
                 valueLabels.set(descriptor.key, valueWidget);
+                this._applyFarmValueStyle(valueWidget, descriptor, stats);
             }
 
             card.add_child(grid);
         }
 
         this._farmCards.set(device.id, {
-            card,
+            card: cardButton,
             valueLabels,
             statusLabel,
             nicknameLabel,
             hasStats: Boolean(stats),
         });
 
-        return card;
+        return cardButton;
     }
 
     _updateSingleDeviceView() {
@@ -2191,6 +2241,18 @@ class BitaxeIndicator extends PanelMenu.Button {
 
         const target = this._getDeviceTargetInfo(device);
         return target ? target.baseUri : null;
+    }
+
+    _openWebUIForUri(uri) {
+        if (!uri) {
+            return;
+        }
+        this.menu.close();
+        try {
+            Gio.AppInfo.launch_default_for_uri(uri, null);
+        } catch (error) {
+            console.error(`[bitaxe-monitor] Failed to open Bitaxe Web UI: ${uri}`, error);
+        }
     }
 
     _updateWebUIButtonState() {
