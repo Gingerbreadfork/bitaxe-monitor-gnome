@@ -373,6 +373,7 @@ class BitaxeIndicator extends PanelMenu.Button {
         this._timeoutId = null;
         this._devicesChangedDebounceId = null;
         this._copyStatsFeedbackTimeoutId = null;
+        this._buttonFlashTimeouts = new Map();
         this._inFlightDevices = new Set();
         this._activeFetchGeneration = 0;
         this._devices = [];
@@ -1215,11 +1216,21 @@ class BitaxeIndicator extends PanelMenu.Button {
             const identifyButton = new St.Button({
                 label: '👋',
                 style_class: 'bitaxe-farm-card-action',
+                accessible_name: 'Identify device',
                 can_focus: true,
                 track_hover: true,
             });
+            let identifyDestroyed = false;
+            identifyButton.connect('destroy', () => {
+                identifyDestroyed = true;
+                this._cancelButtonFlash(identifyButton);
+            });
             identifyButton.connect('clicked', () => {
-                this._identifyDevice(device);
+                this._identifyDevice(device).then(sent => {
+                    if (sent && !identifyDestroyed) {
+                        this._flashButtonLabel(identifyButton, '✓');
+                    }
+                });
             });
             header.add_child(identifyButton);
         }
@@ -1228,6 +1239,7 @@ class BitaxeIndicator extends PanelMenu.Button {
             const webUIButton = new St.Button({
                 label: '↗',
                 style_class: 'bitaxe-farm-card-action',
+                accessible_name: 'Open web UI',
                 can_focus: true,
                 track_hover: true,
             });
@@ -1636,17 +1648,41 @@ class BitaxeIndicator extends PanelMenu.Button {
         const currentDevice = this._devices.find(d => d.id === device.id) || device;
         const target = this._getDeviceTargetInfo(currentDevice);
         if (!target) {
-            return;
+            return Promise.resolve(false);
         }
 
         const name = currentDevice.nickname || currentDevice.ip || 'Device';
-        this._postToDevice(`${target.baseUri}/api/system/identify`).catch(error => {
-            if (error.matches && error.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.CANCELLED)) {
-                return;
-            }
-            console.error(`[bitaxe-monitor] Identify request failed for ${name}:`, error);
-            this._notify(`${name}: identify request failed`);
+        return this._postToDevice(`${target.baseUri}/api/system/identify`)
+            .then(() => true)
+            .catch(error => {
+                if (!error.matches || !error.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.CANCELLED)) {
+                    console.error(`[bitaxe-monitor] Identify request failed for ${name}:`, error);
+                    this._notify(`${name}: identify request failed`);
+                }
+                return false;
+            });
+    }
+
+    _flashButtonLabel(button, text) {
+        this._cancelButtonFlash(button);
+        const label = button.label;
+        button.label = text;
+        const id = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 2000, () => {
+            this._buttonFlashTimeouts.delete(button);
+            button.label = label;
+            return GLib.SOURCE_REMOVE;
         });
+        this._buttonFlashTimeouts.set(button, {id, label});
+    }
+
+    _cancelButtonFlash(button) {
+        const pending = this._buttonFlashTimeouts.get(button);
+        if (!pending) {
+            return;
+        }
+        GLib.source_remove(pending.id);
+        this._buttonFlashTimeouts.delete(button);
+        button.label = pending.label;
     }
 
     _getDeviceAlertState(deviceId) {
@@ -2830,6 +2866,11 @@ class BitaxeIndicator extends PanelMenu.Button {
             GLib.source_remove(this._copyStatsFeedbackTimeoutId);
             this._copyStatsFeedbackTimeoutId = null;
         }
+
+        for (const pending of this._buttonFlashTimeouts.values()) {
+            GLib.source_remove(pending.id);
+        }
+        this._buttonFlashTimeouts.clear();
 
         if (this._settingsChangedIds) {
             for (const id of this._settingsChangedIds) {

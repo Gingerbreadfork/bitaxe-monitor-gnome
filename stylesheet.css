@@ -282,6 +282,7 @@
     padding: 0 6px;
     margin-right: 6px;
     border-radius: 6px;
+    min-width: 1.2em;
     font-weight: 700;
 }
 
