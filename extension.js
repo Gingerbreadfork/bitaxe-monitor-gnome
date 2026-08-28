@@ -19,6 +19,7 @@ const HTTP_REQUEST_TIMEOUT_SECONDS = 10;
 const OFFLINE_NOTIFY_FAILURES = 3;
 const ZERO_HASHRATE_NOTIFY_SAMPLES = 3;
 const TEMP_ALERT_HYSTERESIS_C = 3;
+const FARM_SPARKLINE_KEY = 'farm-hashrate';
 const STATUS_NO_DEVICES = 'No devices';
 const STATUS_CONNECTING = 'Connecting...';
 
@@ -1270,11 +1271,12 @@ class BitaxeIndicator extends PanelMenu.Button {
             card.add_child(offlineLabel);
         } else {
             if (this._settings.get_boolean('farm-show-sparkline')) {
-                sparkline = this._ensureDeviceSparkline(device.id, 'farm-hashrate');
+                sparkline = this._ensureDeviceSparkline(device.id, FARM_SPARKLINE_KEY);
             }
             if (sparkline) {
                 this._detachSparkline(sparkline);
                 sparkline.actor.x_expand = true;
+                sparkline.actor.visible = true;
                 card.add_child(sparkline.actor);
             }
 
@@ -2438,7 +2440,7 @@ class BitaxeIndicator extends PanelMenu.Button {
             }
         }
         this._pushDeviceSparkline(deviceId, 'hashrate', this._toNumber(stats.hashRate, NaN));
-        this._pushDeviceSparkline(deviceId, 'farm-hashrate', this._toNumber(stats.hashRate, NaN));
+        this._pushDeviceSparkline(deviceId, FARM_SPARKLINE_KEY, this._toNumber(stats.hashRate, NaN));
         this._pushDeviceSparkline(deviceId, 'error-rate', errorPercentage);
         this._pushDeviceSparkline(deviceId, 'temp', this._toNumber(stats.temp, NaN));
         this._pushDeviceSparkline(deviceId, 'vrm-temp', this._toNumber(stats.vrTemp, NaN));
@@ -2450,8 +2452,10 @@ class BitaxeIndicator extends PanelMenu.Button {
     _updateSparklineVisibility() {
         const visible = this._settings.get_boolean('show-sparklines');
         for (const deviceSparklines of this._deviceSparklines.values()) {
-            for (const sparkline of deviceSparklines.values()) {
-                sparkline.actor.visible = visible;
+            for (const [key, sparkline] of deviceSparklines.entries()) {
+                if (key !== FARM_SPARKLINE_KEY) {
+                    sparkline.actor.visible = visible;
+                }
             }
         }
     }
