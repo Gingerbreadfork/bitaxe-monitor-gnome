@@ -226,6 +226,11 @@
       <summary>Farm: Show Voltage</summary>
       <description>Show voltage in farm view device cards</description>
     </key>
+    <key name="farm-show-sparkline" type="b">
+      <default>true</default>
+      <summary>Farm: Show Hashrate Sparkline</summary>
+      <description>Show a hashrate history sparkline in farm view device cards</description>
+    </key>
     <key name="notify-on-block-found" type="b">
       <default>true</default>
       <summary>Notify on Block Found</summary>

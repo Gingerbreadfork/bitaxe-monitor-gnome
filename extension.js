@@ -457,6 +457,7 @@ class BitaxeIndicator extends PanelMenu.Button {
         );
 
         const farmStatsKeys = [
+            'farm-show-sparkline',
             'farm-show-hashrate',
             'farm-show-asic-temp',
             'farm-show-vrm-temp',
@@ -1031,6 +1032,7 @@ class BitaxeIndicator extends PanelMenu.Button {
         const signature = JSON.stringify({
             ids: this._devices.map(device => device.id),
             columns,
+            sparkline: this._settings.get_boolean('farm-show-sparkline'),
             stats: descriptors.map(descriptor => descriptor.key),
         });
 
@@ -1043,6 +1045,9 @@ class BitaxeIndicator extends PanelMenu.Button {
     }
 
     _rebuildFarmView(columns, descriptors) {
+        for (const entry of this._farmCards.values()) {
+            this._detachSparkline(entry.sparkline);
+        }
         this._farmViewBox.destroy_all_children();
         this._farmCards.clear();
 
@@ -1121,11 +1126,23 @@ class BitaxeIndicator extends PanelMenu.Button {
         }
         const oldCard = entry.card;
         const parent = oldCard.get_parent();
+        this._detachSparkline(entry.sparkline);
         const newCard = this._createFarmDeviceCard(device, descriptors);
         if (parent) {
             parent.replace_child(oldCard, newCard);
         }
         oldCard.destroy();
+    }
+
+    _detachSparkline(sparkline) {
+        const actor = sparkline ? sparkline.actor : null;
+        if (!actor) {
+            return;
+        }
+        const parent = actor.get_parent();
+        if (parent) {
+            parent.remove_child(actor);
+        }
     }
 
     _getTempWarningClass(stats) {
@@ -1217,6 +1234,7 @@ class BitaxeIndicator extends PanelMenu.Button {
         card.add_child(header);
 
         const valueLabels = new Map();
+        let sparkline = null;
 
         if (!stats) {
             const offlineLabel = new St.Label({
@@ -1225,6 +1243,15 @@ class BitaxeIndicator extends PanelMenu.Button {
             });
             card.add_child(offlineLabel);
         } else {
+            if (this._settings.get_boolean('farm-show-sparkline')) {
+                sparkline = this._ensureDeviceSparkline(device.id, 'farm-hashrate');
+            }
+            if (sparkline) {
+                this._detachSparkline(sparkline);
+                sparkline.actor.x_expand = true;
+                card.add_child(sparkline.actor);
+            }
+
             const grid = new St.BoxLayout({
                 style_class: 'bitaxe-farm-stats-grid',
                 vertical: true,
@@ -1264,6 +1291,7 @@ class BitaxeIndicator extends PanelMenu.Button {
             statusLabel,
             nicknameLabel,
             blockLabel,
+            sparkline,
             hasStats: Boolean(stats),
         });
 
@@ -2312,6 +2340,7 @@ class BitaxeIndicator extends PanelMenu.Button {
             }
         }
         this._pushDeviceSparkline(deviceId, 'hashrate', this._toNumber(stats.hashRate, NaN));
+        this._pushDeviceSparkline(deviceId, 'farm-hashrate', this._toNumber(stats.hashRate, NaN));
         this._pushDeviceSparkline(deviceId, 'error-rate', errorPercentage);
         this._pushDeviceSparkline(deviceId, 'temp', this._toNumber(stats.temp, NaN));
         this._pushDeviceSparkline(deviceId, 'vrm-temp', this._toNumber(stats.vrTemp, NaN));
@@ -2355,7 +2384,8 @@ class BitaxeIndicator extends PanelMenu.Button {
     }
 
     _updateSparklineTheme() {
-        if (!this._singleDeviceContainer) {
+        const containers = [this._singleDeviceContainer, this._farmViewContainer].filter(Boolean);
+        if (containers.length === 0) {
             return;
         }
 
@@ -2373,15 +2403,16 @@ class BitaxeIndicator extends PanelMenu.Button {
             'bitaxe-sparkline-theme-lime',
             'bitaxe-sparkline-theme-teal',
         ];
-        for (const themeClass of themeClasses) {
-            if (this._singleDeviceContainer.has_style_class_name(themeClass)) {
-                this._singleDeviceContainer.remove_style_class_name(themeClass);
-            }
-        }
-
         const theme = this._settings.get_string('sparkline-theme');
         const themeClass = `bitaxe-sparkline-theme-${theme}`;
-        this._singleDeviceContainer.add_style_class_name(themeClass);
+        for (const container of containers) {
+            for (const name of themeClasses) {
+                if (container.has_style_class_name(name)) {
+                    container.remove_style_class_name(name);
+                }
+            }
+            container.add_style_class_name(themeClass);
+        }
 
         for (const deviceSparklines of this._deviceSparklines.values()) {
             for (const sparkline of deviceSparklines.values()) {

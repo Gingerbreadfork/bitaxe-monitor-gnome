@@ -121,12 +121,17 @@
     width: 92px;
 }
 
+.bitaxe-sparkline-farm-hashrate {
+    height: 28px;
+}
+
 .bitaxe-stat-row-left .bitaxe-stat-value {
     min-width: 108px;
     width: 108px;
 }
 
-.bitaxe-sparkline-theme-colorful .bitaxe-sparkline-hashrate {
+.bitaxe-sparkline-theme-colorful .bitaxe-sparkline-hashrate,
+.bitaxe-sparkline-theme-colorful .bitaxe-sparkline-farm-hashrate {
     color: rgba(75, 179, 253, 0.9);
 }
 

@@ -232,6 +232,7 @@ export default class BitaxeMonitorPreferences extends ExtensionPreferences {
             farmStatsGroup.add(row);
         };
 
+        addFarmSwitchRow('farm-show-sparkline', 'Show Hashrate Sparkline', 'Display a hashrate history graph on each card');
         addFarmSwitchRow('farm-show-hashrate', 'Show Hashrate', 'Display hashrate for each device');
         addFarmSwitchRow('farm-show-asic-temp', 'Show ASIC Temperature', 'Display ASIC temperature for each device');
         addFarmSwitchRow('farm-show-vrm-temp', 'Show VRM Temperature', 'Display VRM temperature for each device');
