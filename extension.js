@@ -74,7 +74,7 @@ class Sparkline {
     }
 
     _queueRepaint() {
-        if (this.actor) {
+        if (this.actor && this.actor.get_stage()) {
             this.actor.queue_repaint();
         }
     }
