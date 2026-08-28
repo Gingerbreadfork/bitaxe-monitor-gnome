@@ -990,7 +990,7 @@ class BitaxeIndicator extends PanelMenu.Button {
             });
         }
         if (s.get_boolean('farm-show-shares')) {
-            add('shares', 'Shares', stats => `${this._toNumber(stats.sharesAccepted, 0)}`);
+            add('shares', 'Shares', stats => this._formatCount(this._toNumber(stats.sharesAccepted, 0)));
         }
         if (s.get_boolean('farm-show-error-rate')) {
             add('error-rate', 'Error Rate', stats => `${this._toNumber(stats.errorPercentage, 0).toFixed(2)}%`);
@@ -1414,7 +1414,7 @@ class BitaxeIndicator extends PanelMenu.Button {
         this._setStatValue('bestSessionDiff', this._formatDifficulty(bestSessionDiff));
 
         const blockHeight = this._toNumber(stats.blockHeight, 0);
-        this._setStatValue('blockHeight', blockHeight > 0 ? this._formatInteger(blockHeight) : '--');
+        this._setStatValue('blockHeight', blockHeight > 0 ? this._formatCount(blockHeight) : '--');
 
         const networkDifficulty = this._toNumber(stats.networkDifficulty, 0);
         this._setStatValue('networkDifficulty', this._formatDifficulty(networkDifficulty));
@@ -2064,7 +2064,7 @@ class BitaxeIndicator extends PanelMenu.Button {
         if (!Number.isFinite(value)) {
             return '--';
         }
-        return `${Math.round(value)}`;
+        return String(Math.round(value)).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
     }
 
     _formatUptime(value) {
@@ -2126,13 +2126,6 @@ class BitaxeIndicator extends PanelMenu.Button {
         return `${Math.round(value)}`;
     }
 
-    _formatInteger(value) {
-        if (!Number.isFinite(value)) {
-            return '--';
-        }
-        return String(Math.round(value)).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-    }
-
     _getAverageHashrate(stats) {
         for (const key of ['hashRate_1h', 'hashRate_10m', 'hashRate']) {
             const value = this._toNumber(stats[key], NaN);
@@ -2188,7 +2181,7 @@ class BitaxeIndicator extends PanelMenu.Button {
         const plural = (amount, unit) => `~${amount} ${Number(amount) === 1 ? unit : `${unit}s`}`;
         const years = seconds / (365.25 * 86400);
         if (years >= 1000) {
-            return plural(this._formatInteger(years), 'year');
+            return plural(this._formatCount(years), 'year');
         } else if (years >= 1) {
             return plural(years.toFixed(1), 'year');
         }
