@@ -638,18 +638,18 @@ class BitaxeIndicator extends PanelMenu.Button {
             {key: 'overclock', label: 'Overclock'},
         ]);
 
+        this._addSection(this._leftColumn, 'Shares', [
+            {key: 'sharesAccepted', label: 'Accepted'},
+            {key: 'sharesRejected', label: 'Rejected'},
+            {key: 'bestDiff', label: 'Best Diff'},
+            {key: 'bestSessionDiff', label: 'Session Best'},
+        ]);
+
         this._addSection(this._rightColumn, 'Pool', [
             {key: 'pool', label: 'Pool'},
             {key: 'poolPort', label: 'Pool Port'},
             {key: 'poolDifficulty', label: 'Pool Diff'},
             {key: 'fallbackPool', label: 'Fallback Pool'},
-        ]);
-
-        this._addSection(this._rightColumn, 'Shares', [
-            {key: 'sharesAccepted', label: 'Accepted'},
-            {key: 'sharesRejected', label: 'Rejected'},
-            {key: 'bestDiff', label: 'Best Diff'},
-            {key: 'bestSessionDiff', label: 'Session Best'},
         ]);
 
         const lotteryActors = this._addSection(this._rightColumn, 'Lottery', [
