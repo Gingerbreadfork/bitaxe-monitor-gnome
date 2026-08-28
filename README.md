@@ -68,8 +68,8 @@ A comprehensive GNOME Shell extension for monitoring your Bitaxe mining devices.
 - **Lottery**
   - Current block height and network difficulty
   - Best share as a percentage of a block
-  - Odds of finding a block today, and the expected time to one at the device's hashrate
-  - Block reward and blocks found
+  - Odds of finding a block today, and the expected time to one at the device's average hashrate
+  - Blocks found, shown once there is one to show
 
 - **System Information**
   - Device uptime
@@ -86,7 +86,7 @@ A comprehensive GNOME Shell extension for monitoring your Bitaxe mining devices.
 
 ### Alerts & Notifications
 Optional desktop notifications when a device needs attention:
-- **Block Found Alert** - When a device finds a block; the only alert that is on by default
+- **Block Found Alert** - When a device finds a block; the only alert that is on by default. The panel and the device's farm card also carry a 🎉 for as long as the device shows its own new-block banner, which you dismiss in its web UI
 - **Best Share Alert** - When a device beats its all-time best difficulty
 - **Offline Alerts** - When a device stops responding, and again when it comes back online
 - **Temperature Alert** - When ASIC temperature reaches your threshold
@@ -213,7 +213,7 @@ The API returns comprehensive system information including:
 - Hardware metrics (temperature, voltage, power)
 - Network information
 - Device details and firmware version
-- Block information (height, network difficulty, reward, blocks found)
+- Block information (height, network difficulty, blocks found)
 
 The only other call is made on demand, when you press 👋 on a farm card:
 
@@ -232,7 +232,7 @@ POST http://<bitaxe-ip>/api/system/identify
 - ✅ Bitaxe Supra (community confirmed)
 
 ### Firmware Compatibility
-Built against current ESP-Miner (v2.x) releases and tolerant of older ones: fields that older firmware doesn't report (hashrate averages, pool port, block height and network difficulty) show as `--`, and legacy string-formatted difficulty values ("1.37G") are parsed correctly. The Lottery section needs AxeOS 2.11 or newer, and the identify button 2.12 or newer.
+Built against current ESP-Miner (v2.x) releases and tolerant of older ones: fields that older firmware doesn't report (hashrate averages, pool port, block height and network difficulty) show as `--`, and legacy string-formatted difficulty values ("1.37G") are parsed correctly. The Lottery section needs AxeOS 2.11 or newer, the identify button 2.12, and the block-found badge 2.13.
 
 ## Troubleshooting
 
