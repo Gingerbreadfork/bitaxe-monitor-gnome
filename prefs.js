@@ -378,7 +378,7 @@ export default class BitaxeMonitorPreferences extends ExtensionPreferences {
 
         const notifyGroup = new Adw.PreferencesGroup({
             title: 'Notifications',
-            description: 'Send desktop notifications when a device needs attention. Notifications follow your system Do Not Disturb setting.',
+            description: 'Send desktop notifications for mining milestones and when a device needs attention. Notifications follow your system Do Not Disturb setting.',
         });
         alertsPage.add(notifyGroup);
 

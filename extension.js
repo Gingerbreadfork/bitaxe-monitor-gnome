@@ -2175,21 +2175,22 @@ class BitaxeIndicator extends PanelMenu.Button {
         if (!Number.isFinite(seconds) || seconds <= 0) {
             return '--';
         }
+        const plural = (amount, unit) => `~${amount} ${Number(amount) === 1 ? unit : `${unit}s`}`;
         const years = seconds / (365.25 * 86400);
         if (years >= 1000) {
-            return `~${this._formatInteger(years)} years`;
+            return plural(this._formatInteger(years), 'year');
         } else if (years >= 1) {
-            return `~${years.toFixed(1)} years`;
+            return plural(years.toFixed(1), 'year');
         }
         const days = seconds / 86400;
         if (days >= 1) {
-            return `~${days.toFixed(1)} days`;
+            return plural(days.toFixed(1), 'day');
         }
         const hours = seconds / 3600;
         if (hours >= 1) {
-            return `~${hours.toFixed(1)} hours`;
+            return plural(hours.toFixed(1), 'hour');
         }
-        return `~${Math.max(1, Math.round(seconds / 60))} minutes`;
+        return plural(Math.max(1, Math.round(seconds / 60)), 'minute');
     }
 
     _formatBytes(value) {
