@@ -19,7 +19,8 @@ A comprehensive GNOME Shell extension for monitoring your Bitaxe mining devices.
 ### Multi-Device Support
 - **Manage unlimited devices** - Add multiple Bitaxe devices with custom nicknames
 - **Farm View** - Grid layout showing all devices at once (1-4 columns)
-- **Interactive Farm Cards** - Click a card to jump to that device's detailed view, or use its ↗ shortcut to open the device's web UI
+- **Interactive Farm Cards** - Click a card to jump to that device's detailed view, use its ↗ shortcut to open the device's web UI, or 👋 to make the device say "Hi!" on its own screen so you can pick it out of a shelf
+- **Farm Card Sparklines** - Every card carries a live hashrate graph
 - **Single Device View** - Detailed statistics for individual devices
 - **Quick View Switching** - Easy toggle between farm and device views
 - **Auto Detection** - Automatically switches to farm view when 2+ devices are configured
@@ -64,6 +65,12 @@ A comprehensive GNOME Shell extension for monitoring your Bitaxe mining devices.
   - Shares accepted/rejected
   - Best difficulty (all-time and session)
 
+- **Lottery**
+  - Current block height and network difficulty
+  - Best share as a percentage of a block
+  - Odds of finding a block today, and the expected time to one at the device's hashrate
+  - Block reward and blocks found
+
 - **System Information**
   - Device uptime
   - ASIC model
@@ -78,7 +85,9 @@ A comprehensive GNOME Shell extension for monitoring your Bitaxe mining devices.
   - Free heap memory
 
 ### Alerts & Notifications
-Optional desktop notifications when a device needs attention — all off by default:
+Optional desktop notifications when a device needs attention:
+- **Block Found Alert** - When a device finds a block; the only alert that is on by default
+- **Best Share Alert** - When a device beats its all-time best difficulty
 - **Offline Alerts** - When a device stops responding, and again when it comes back online
 - **Temperature Alert** - When ASIC temperature reaches your threshold
 - **Zero Hashrate Alert** - When a device keeps reporting 0 hashrate
@@ -95,6 +104,7 @@ Notifications fire once per event rather than repeating, and follow your system 
 
 ### Farm View Customization
 Configure which stats to display for each device in farm view:
+- Hashrate sparkline
 - Hashrate, temperatures (ASIC/VRM), power, voltage
 - Mining efficiency, shares, error rate
 - Best difficulty, fan speed, frequency
@@ -183,6 +193,8 @@ cd bitaxe-monitor-gnome
 - **Appearance** - Customize separators and hashrate units
 
 #### Alerts Tab
+- **Block Found Alert** - Notify when a device finds a block
+- **Best Share Alert** - Notify on a new all-time best share
 - **Offline Alerts** - Notify when devices go offline or recover
 - **Temperature Alert** - ASIC temperature threshold in °C (0 disables)
 - **Zero Hashrate Alert** - Notify when hashrate flatlines at 0
@@ -201,6 +213,13 @@ The API returns comprehensive system information including:
 - Hardware metrics (temperature, voltage, power)
 - Network information
 - Device details and firmware version
+- Block information (height, network difficulty, reward, blocks found)
+
+The only other call is made on demand, when you press 👋 on a farm card:
+
+```
+POST http://<bitaxe-ip>/api/system/identify
+```
 
 ## Requirements
 
@@ -213,7 +232,7 @@ The API returns comprehensive system information including:
 - ✅ Bitaxe Supra (community confirmed)
 
 ### Firmware Compatibility
-Built against current ESP-Miner (v2.x) releases and tolerant of older ones: fields that older firmware doesn't report (hashrate averages, pool port) show as `--`, and legacy string-formatted difficulty values ("1.37G") are parsed correctly.
+Built against current ESP-Miner (v2.x) releases and tolerant of older ones: fields that older firmware doesn't report (hashrate averages, pool port, block height and network difficulty) show as `--`, and legacy string-formatted difficulty values ("1.37G") are parsed correctly. The Lottery section needs AxeOS 2.11 or newer, and the identify button 2.12 or newer.
 
 ## Troubleshooting
 
