@@ -234,6 +234,20 @@ POST http://<bitaxe-ip>/api/system/identify
 ### Firmware Compatibility
 Built against current ESP-Miner (v2.x) releases and tolerant of older ones: fields that older firmware doesn't report (hashrate averages, pool port, block height and network difficulty) show as `--`, and legacy string-formatted difficulty values ("1.37G") are parsed correctly. The Lottery section needs AxeOS 2.11 or newer, the identify button 2.12, and the block-found badge 2.13.
 
+## Development
+
+### Testing Without Logging Out
+
+Wayland cannot reload an extension in place, so rather than logging out for every change, run the working tree in a headless GNOME Shell:
+
+```bash
+./tools/headless-test/run.sh
+```
+
+It starts two mock AxeOS devices (one of which has found a block) and a third that stays offline, boots a headless shell with the extension enabled, opens each view, triggers a best-share and a block-found notification, presses the identify button, and leaves screenshots and logs in `tools/headless-test/out/`. Settings live in a throwaway keyfile, so your own device list is never touched. `MONITOR=1440x900` tests a smaller screen and `DEVICES_JSON` swaps in real miners.
+
+For an interactive session in a window, `dbus-run-session -- gnome-shell --devkit` (GNOME 49+) works the same way.
+
 ## Troubleshooting
 
 ### Extension Not Showing Stats
