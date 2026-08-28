@@ -1709,6 +1709,7 @@ class BitaxeIndicator extends PanelMenu.Button {
         let state = this._deviceAlertStates.get(deviceId);
         if (!state) {
             state = {
+                ip: null,
                 failCount: 0,
                 notifiedOffline: false,
                 lastBlockFound: null,
@@ -1734,6 +1735,12 @@ class BitaxeIndicator extends PanelMenu.Button {
 
         const state = this._getDeviceAlertState(device.id);
         const name = device.nickname || device.ip || 'Device';
+
+        if (state.ip !== device.ip) {
+            state.ip = device.ip;
+            state.lastBlockFound = null;
+            state.lastBestDiff = null;
+        }
 
         if (!stats) {
             state.failCount++;
