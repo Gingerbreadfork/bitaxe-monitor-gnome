@@ -226,6 +226,11 @@
       <summary>Farm: Show Voltage</summary>
       <description>Show voltage in farm view device cards</description>
     </key>
+    <key name="notify-on-block-found" type="b">
+      <default>true</default>
+      <summary>Notify on Block Found</summary>
+      <description>Send a notification when a device finds a block</description>
+    </key>
     <key name="notify-on-offline" type="b">
       <default>false</default>
       <summary>Notify on Offline</summary>

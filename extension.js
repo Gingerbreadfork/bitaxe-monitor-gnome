@@ -1102,6 +1102,7 @@ class BitaxeIndicator extends PanelMenu.Button {
 
             entry.nicknameLabel.text = device.nickname || device.ip || 'Device';
             if (stats) {
+                entry.blockLabel.visible = this._hasNewBlock(stats);
                 for (const descriptor of descriptors) {
                     const label = entry.valueLabels.get(descriptor.key);
                     if (label) {
@@ -1187,6 +1188,12 @@ class BitaxeIndicator extends PanelMenu.Button {
         });
         header.add_child(nicknameLabel);
 
+        const blockLabel = new St.Label({
+            text: '🎉',
+            visible: this._hasNewBlock(stats),
+        });
+        header.add_child(blockLabel);
+
         if (this._getDeviceTargetInfo(device)) {
             const webUIButton = new St.Button({
                 label: '↗',
@@ -1256,6 +1263,7 @@ class BitaxeIndicator extends PanelMenu.Button {
             valueLabels,
             statusLabel,
             nicknameLabel,
+            blockLabel,
             hasStats: Boolean(stats),
         });
 
@@ -1561,6 +1569,7 @@ class BitaxeIndicator extends PanelMenu.Button {
             state = {
                 failCount: 0,
                 notifiedOffline: false,
+                lastBlockFound: null,
                 tempAlerted: false,
                 zeroCount: 0,
                 zeroAlerted: false,
@@ -1600,6 +1609,16 @@ class BitaxeIndicator extends PanelMenu.Button {
             if (this._settings.get_boolean('notify-on-offline')) {
                 this._notify(`${name} is back online`);
             }
+        }
+
+        const blockFound = this._toNumber(stats.blockFound, NaN);
+        if (Number.isFinite(blockFound)) {
+            if (state.lastBlockFound !== null &&
+                blockFound > state.lastBlockFound &&
+                this._settings.get_boolean('notify-on-block-found')) {
+                this._notify(`🎉 ${name} found a block!`);
+            }
+            state.lastBlockFound = blockFound;
         }
 
         const tempThreshold = this._settings.get_int('notify-temp-threshold');
@@ -1700,7 +1719,10 @@ class BitaxeIndicator extends PanelMenu.Button {
         }
 
         const labelParts = [];
-        const prefix = this._devices.length > 1 ? `${device.nickname || device.ip}: ` : '';
+        let prefix = this._devices.length > 1 ? `${device.nickname || device.ip}: ` : '';
+        if (this._hasNewBlock(stats)) {
+            prefix = `🎉 ${prefix}`;
+        }
 
         if (this._settings.get_boolean('show-hashrate')) {
             const hashrate = this._formatHashrate(this._toNumber(stats.hashRate, 0));
@@ -1788,6 +1810,7 @@ class BitaxeIndicator extends PanelMenu.Button {
         let avgTemp = 0;
         let tempCount = 0;
         let onlineCount = 0;
+        let hasNewBlock = false;
 
         for (const device of this._devices) {
             const stats = this._deviceStats.get(device.id);
@@ -1799,11 +1822,17 @@ class BitaxeIndicator extends PanelMenu.Button {
                     avgTemp += temp;
                     tempCount++;
                 }
+                if (this._hasNewBlock(stats)) {
+                    hasNewBlock = true;
+                }
                 onlineCount++;
             }
         }
 
-        const prefix = `[${onlineCount}/${this._devices.length}] `;
+        let prefix = `[${onlineCount}/${this._devices.length}] `;
+        if (hasNewBlock) {
+            prefix = `🎉 ${prefix}`;
+        }
 
         if (this._settings.get_boolean('show-hashrate')) {
             labelParts.push(this._formatHashrate(totalHashrate));
@@ -1836,6 +1865,10 @@ class BitaxeIndicator extends PanelMenu.Button {
             : prefix + 'Bitaxe Farm';
 
         this._updateLabel(labelText);
+    }
+
+    _hasNewBlock(stats) {
+        return Boolean(stats) && stats.showNewBlock === true;
     }
 
     _formatTimeNow() {
