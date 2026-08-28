@@ -278,15 +278,15 @@
     spacing: 8px;
 }
 
-.bitaxe-farm-card-webui {
+.bitaxe-farm-card-action {
     padding: 0 6px;
     margin-right: 6px;
     border-radius: 6px;
     font-weight: 700;
 }
 
-.bitaxe-farm-card-webui:hover,
-.bitaxe-farm-card-webui:focus {
+.bitaxe-farm-card-action:hover,
+.bitaxe-farm-card-action:focus {
     background-color: rgba(127, 127, 127, 0.3);
 }
 

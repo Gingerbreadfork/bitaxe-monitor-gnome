@@ -1211,10 +1211,23 @@ class BitaxeIndicator extends PanelMenu.Button {
         });
         header.add_child(blockLabel);
 
+        if (stats && this._getDeviceTargetInfo(device)) {
+            const identifyButton = new St.Button({
+                label: '👋',
+                style_class: 'bitaxe-farm-card-action',
+                can_focus: true,
+                track_hover: true,
+            });
+            identifyButton.connect('clicked', () => {
+                this._identifyDevice(device);
+            });
+            header.add_child(identifyButton);
+        }
+
         if (this._getDeviceTargetInfo(device)) {
             const webUIButton = new St.Button({
                 label: '↗',
-                style_class: 'bitaxe-farm-card-webui',
+                style_class: 'bitaxe-farm-card-action',
                 can_focus: true,
                 track_hover: true,
             });
@@ -1588,6 +1601,51 @@ class BitaxeIndicator extends PanelMenu.Button {
                     }
                 }
             );
+        });
+    }
+
+    _postToDevice(url) {
+        return new Promise((resolve, reject) => {
+            const message = Soup.Message.new('POST', url);
+            if (!message) {
+                reject(new Error(`Invalid URL: ${url}`));
+                return;
+            }
+
+            this._httpSession.send_and_read_async(
+                message,
+                GLib.PRIORITY_DEFAULT,
+                this._cancellable,
+                (session, result) => {
+                    try {
+                        session.send_and_read_finish(result);
+                        const status = message.get_status();
+                        if (status !== Soup.Status.OK) {
+                            throw new Error(`HTTP ${status}: ${message.get_reason_phrase()}`);
+                        }
+                        resolve();
+                    } catch (e) {
+                        reject(e);
+                    }
+                }
+            );
+        });
+    }
+
+    _identifyDevice(device) {
+        const currentDevice = this._devices.find(d => d.id === device.id) || device;
+        const target = this._getDeviceTargetInfo(currentDevice);
+        if (!target) {
+            return;
+        }
+
+        const name = currentDevice.nickname || currentDevice.ip || 'Device';
+        this._postToDevice(`${target.baseUri}/api/system/identify`).catch(error => {
+            if (error.matches && error.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.CANCELLED)) {
+                return;
+            }
+            console.error(`[bitaxe-monitor] Identify request failed for ${name}:`, error);
+            this._notify(`${name}: identify request failed`);
         });
     }
 
