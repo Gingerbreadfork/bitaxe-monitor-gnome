@@ -21,6 +21,8 @@ const OFFLINE_NOTIFY_FAILURES = 3;
 const ZERO_HASHRATE_NOTIFY_SAMPLES = 3;
 const TEMP_ALERT_HYSTERESIS_C = 3;
 const FARM_SPARKLINE_KEY = 'farm-hashrate';
+const POPUP_RESERVED_HEIGHT = 160;
+const POPUP_MIN_SCROLL_HEIGHT = 300;
 const STATUS_NO_DEVICES = 'No devices';
 const STATUS_CONNECTING = 'Connecting...';
 
@@ -402,7 +404,9 @@ class BitaxeIndicator extends PanelMenu.Button {
         this._createMenuItems();
 
         this.menu.connect('open-state-changed', (_menu, isOpen) => {
-            if (!isOpen && this._pendingPanelLabelText !== null) {
+            if (isOpen) {
+                this._updateScrollViewHeights();
+            } else if (this._pendingPanelLabelText !== null) {
                 this._label.text = this._pendingPanelLabelText;
                 this._pendingPanelLabelText = null;
             }
@@ -779,6 +783,17 @@ class BitaxeIndicator extends PanelMenu.Button {
         this._setRefreshButtonBusy(false);
         this._updatePauseButtonState();
         this._updateWebUIButtonState();
+    }
+
+    _updateScrollViewHeights() {
+        const monitor = Main.layoutManager.findMonitorForActor(this) || Main.layoutManager.primaryMonitor;
+        if (!monitor) {
+            return;
+        }
+        const workArea = Main.layoutManager.getWorkAreaForMonitor(monitor.index);
+        const maxHeight = Math.max(POPUP_MIN_SCROLL_HEIGHT, workArea.height - POPUP_RESERVED_HEIGHT);
+        this._singleDeviceScrollView.set_style(`max-height: ${maxHeight}px;`);
+        this._farmViewContainer.set_style(`max-height: ${maxHeight}px;`);
     }
 
     _loadDevices() {

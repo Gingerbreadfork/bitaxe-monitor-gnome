@@ -240,13 +240,11 @@
 }
 
 .bitaxe-single-device-scroll {
-    max-height: 720px;
     padding-right: 12px;
 }
 
 .bitaxe-farm-view {
     min-width: 400px;
-    max-height: 600px;
     padding: 8px 12px;
 }
 
