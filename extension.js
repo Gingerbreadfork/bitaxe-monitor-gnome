@@ -646,15 +646,16 @@ class BitaxeIndicator extends PanelMenu.Button {
             {key: 'bestSessionDiff', label: 'Session Best'},
         ]);
 
-        this._addSection(this._rightColumn, 'Lottery', [
+        const lotteryActors = this._addSection(this._rightColumn, 'Lottery', [
             {key: 'blockHeight', label: 'Block Height'},
             {key: 'networkDifficulty', label: 'Network Diff'},
             {key: 'blockProgress', label: 'Best Share'},
             {key: 'blockOdds', label: 'Odds Today'},
             {key: 'blockTime', label: 'Time to Block'},
-            {key: 'blockReward', label: 'Block Reward'},
             {key: 'blocksFound', label: 'Blocks Found'},
         ]);
+        this._blocksFoundRow = lotteryActors[lotteryActors.length - 1];
+        this._blocksFoundRow.visible = false;
 
         this._addSection(this._rightColumn, 'System', [
             {key: 'uptime', label: 'Uptime'},
@@ -1419,14 +1420,13 @@ class BitaxeIndicator extends PanelMenu.Button {
         this._setStatValue('networkDifficulty', this._formatDifficulty(networkDifficulty));
         this._setStatValue('blockProgress', this._formatBlockProgress(bestDiff, networkDifficulty));
 
-        const secondsPerBlock = this._getExpectedSecondsPerBlock(this._toNumber(stats.hashRate, 0), networkDifficulty);
+        const secondsPerBlock = this._getExpectedSecondsPerBlock(this._getAverageHashrate(stats), networkDifficulty);
         this._setStatValue('blockOdds', this._formatBlockOdds(secondsPerBlock));
         this._setStatValue('blockTime', this._formatExpectedDuration(secondsPerBlock));
 
-        const blockReward = this._toNumber(stats.coinbaseValueTotalSatoshis, 0);
-        this._setStatValue('blockReward', blockReward > 0 ? `${(blockReward / 1e8).toFixed(3)} BTC` : '--');
-
-        this._setStatValue('blocksFound', this._formatCount(this._toNumber(stats.blockFound, NaN)));
+        const blocksFound = this._toNumber(stats.blockFound, 0);
+        this._blocksFoundRow.visible = blocksFound > 0;
+        this._setStatValue('blocksFound', this._formatCount(blocksFound));
 
         this._setStatValue('uptime', this._formatUptime(stats.uptimeSeconds));
         this._setStatValue('model', stats.ASICModel || 'Unknown');
@@ -2133,6 +2133,16 @@ class BitaxeIndicator extends PanelMenu.Button {
         return String(Math.round(value)).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
     }
 
+    _getAverageHashrate(stats) {
+        for (const key of ['hashRate_1h', 'hashRate_10m', 'hashRate']) {
+            const value = this._toNumber(stats[key], NaN);
+            if (Number.isFinite(value) && value > 0) {
+                return value;
+            }
+        }
+        return 0;
+    }
+
     _getExpectedSecondsPerBlock(hashrateGh, networkDifficulty) {
         if (!Number.isFinite(hashrateGh) || hashrateGh <= 0 ||
             !Number.isFinite(networkDifficulty) || networkDifficulty <= 0) {
@@ -2658,6 +2668,7 @@ class BitaxeIndicator extends PanelMenu.Button {
         for (const label of this._statValueLabels.values()) {
             label.text = '--';
         }
+        this._blocksFoundRow.visible = false;
 
         this._clearVoltageRails();
     }
@@ -2734,7 +2745,7 @@ class BitaxeIndicator extends PanelMenu.Button {
 
         const networkDifficulty = this._toNumber(stats.networkDifficulty, 0);
         if (networkDifficulty > 0) {
-            const secondsPerBlock = this._getExpectedSecondsPerBlock(this._toNumber(stats.hashRate, 0), networkDifficulty);
+            const secondsPerBlock = this._getExpectedSecondsPerBlock(this._getAverageHashrate(stats), networkDifficulty);
             lines.push(`Block Odds: ${this._formatBlockOdds(secondsPerBlock)} per day | Best Share ${this._formatBlockProgress(bestDiff, networkDifficulty)}`);
         }
 
