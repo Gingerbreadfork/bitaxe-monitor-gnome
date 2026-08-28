@@ -16,6 +16,7 @@ const SPARKLINE_PADDING = 2;
 const SPARKLINE_WINDOW_DEFAULT_MINUTES = 5;
 const SPARKLINE_MAX_POINTS_HARD_CAP = 4096;
 const HTTP_REQUEST_TIMEOUT_SECONDS = 10;
+const IDENTIFY_DURATION_MS = 30000;
 const OFFLINE_NOTIFY_FAILURES = 3;
 const ZERO_HASHRATE_NOTIFY_SAMPLES = 3;
 const TEMP_ALERT_HYSTERESIS_C = 3;
@@ -1228,9 +1229,14 @@ class BitaxeIndicator extends PanelMenu.Button {
                 this._cancelButtonFlash(identifyButton);
             });
             identifyButton.connect('clicked', () => {
-                this._identifyDevice(device).then(sent => {
-                    if (sent && !identifyDestroyed) {
-                        this._flashButtonLabel(identifyButton, '✓');
+                this._identifyDevice(device).then(sayingHi => {
+                    if (sayingHi === null || identifyDestroyed) {
+                        return;
+                    }
+                    if (sayingHi) {
+                        this._flashButtonLabel(identifyButton, '✓', IDENTIFY_DURATION_MS);
+                    } else {
+                        this._cancelButtonFlash(identifyButton);
                     }
                 });
             });
@@ -1632,12 +1638,21 @@ class BitaxeIndicator extends PanelMenu.Button {
                 this._cancellable,
                 (session, result) => {
                     try {
-                        session.send_and_read_finish(result);
+                        const bytes = session.send_and_read_finish(result);
                         const status = message.get_status();
                         if (status !== Soup.Status.OK) {
                             throw new Error(`HTTP ${status}: ${message.get_reason_phrase()}`);
                         }
-                        resolve();
+                        const data = bytes.get_data();
+                        let body = null;
+                        if (data && data.length > 0) {
+                            try {
+                                body = JSON.parse(new TextDecoder('utf-8').decode(data));
+                            } catch (e) {
+                                body = null;
+                            }
+                        }
+                        resolve(body);
                     } catch (e) {
                         reject(e);
                     }
@@ -1650,26 +1665,29 @@ class BitaxeIndicator extends PanelMenu.Button {
         const currentDevice = this._devices.find(d => d.id === device.id) || device;
         const target = this._getDeviceTargetInfo(currentDevice);
         if (!target) {
-            return Promise.resolve(false);
+            return Promise.resolve(null);
         }
 
         const name = currentDevice.nickname || currentDevice.ip || 'Device';
         return this._postToDevice(`${target.baseUri}/api/system/identify`)
-            .then(() => true)
+            .then(body => {
+                const message = body && typeof body.message === 'string' ? body.message : '';
+                return !message.includes('no longer');
+            })
             .catch(error => {
                 if (!error.matches || !error.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.CANCELLED)) {
                     console.error(`[bitaxe-monitor] Identify request failed for ${name}:`, error);
                     this._notify(`${name}: identify request failed`);
                 }
-                return false;
+                return null;
             });
     }
 
-    _flashButtonLabel(button, text) {
+    _flashButtonLabel(button, text, durationMs) {
         this._cancelButtonFlash(button);
         const label = button.label;
         button.label = text;
-        const id = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 2000, () => {
+        const id = GLib.timeout_add(GLib.PRIORITY_DEFAULT, durationMs, () => {
             this._buttonFlashTimeouts.delete(button);
             button.label = label;
             return GLib.SOURCE_REMOVE;
