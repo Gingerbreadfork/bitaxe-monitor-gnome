@@ -1234,7 +1234,7 @@ class BitaxeIndicator extends PanelMenu.Button {
         });
         header.add_child(blockLabel);
 
-        if (stats && this._getDeviceTargetInfo(device)) {
+        if (stats && this._supportsIdentify(stats) && this._getDeviceTargetInfo(device)) {
             const identifyButton = new St.Button({
                 label: '👋',
                 style_class: 'bitaxe-farm-card-action',
@@ -1641,6 +1641,16 @@ class BitaxeIndicator extends PanelMenu.Button {
                 }
             );
         });
+    }
+
+    _supportsIdentify(stats) {
+        const match = String(stats.version || '').match(/(\d+)\.(\d+)/);
+        if (!match) {
+            return false;
+        }
+        const major = Number(match[1]);
+        const minor = Number(match[2]);
+        return major > 2 || (major === 2 && minor >= 12);
     }
 
     _postToDevice(url) {

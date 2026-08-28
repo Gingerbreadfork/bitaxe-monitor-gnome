@@ -19,7 +19,7 @@ A comprehensive GNOME Shell extension for monitoring your Bitaxe mining devices.
 ### Multi-Device Support
 - **Manage unlimited devices** - Add multiple Bitaxe devices with custom nicknames
 - **Farm View** - Grid layout showing all devices at once (1-4 columns)
-- **Interactive Farm Cards** - Click a card to jump to that device's detailed view, use its ↗ shortcut to open the device's web UI, or 👋 to make the device say "Hi!" on its own screen so you can pick it out of a shelf
+- **Interactive Farm Cards** - Click a card to jump to that device's detailed view, use its ↗ shortcut to open the device's web UI, or 👋 (AxeOS 2.12 or newer) to make the device say "Hi!" on its own screen so you can pick it out of a shelf
 - **Farm Card Sparklines** - Every card carries a live hashrate graph
 - **Single Device View** - Detailed statistics for individual devices
 - **Quick View Switching** - Easy toggle between farm and device views
