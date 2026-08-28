@@ -1207,6 +1207,10 @@ class BitaxeIndicator extends PanelMenu.Button {
             style_class: 'bitaxe-farm-card-title',
             x_expand: true,
         });
+        if (nicknameLabel.clutter_text) {
+            nicknameLabel.clutter_text.set_single_line_mode(true);
+            nicknameLabel.clutter_text.set_ellipsize(Pango.EllipsizeMode.END);
+        }
         header.add_child(nicknameLabel);
 
         const blockLabel = new St.Label({
