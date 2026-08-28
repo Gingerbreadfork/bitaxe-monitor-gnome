@@ -1570,6 +1570,7 @@ class BitaxeIndicator extends PanelMenu.Button {
                 failCount: 0,
                 notifiedOffline: false,
                 lastBlockFound: null,
+                lastBestDiff: null,
                 tempAlerted: false,
                 zeroCount: 0,
                 zeroAlerted: false,
@@ -1619,6 +1620,16 @@ class BitaxeIndicator extends PanelMenu.Button {
                 this._notify(`🎉 ${name} found a block!`);
             }
             state.lastBlockFound = blockFound;
+        }
+
+        const bestDiff = this._parseDifficulty(stats.bestDiff);
+        if (Number.isFinite(bestDiff) && bestDiff > 0) {
+            if (state.lastBestDiff !== null &&
+                bestDiff > state.lastBestDiff &&
+                this._settings.get_boolean('notify-on-best-diff')) {
+                this._notify(`${name}: new best share ${this._formatDifficulty(bestDiff)}`);
+            }
+            state.lastBestDiff = bestDiff;
         }
 
         const tempThreshold = this._settings.get_int('notify-temp-threshold');

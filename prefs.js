@@ -382,6 +382,7 @@ export default class BitaxeMonitorPreferences extends ExtensionPreferences {
         alertsPage.add(notifyGroup);
 
         addSwitchRow(notifyGroup, 'notify-on-block-found', 'Block Found Alert', 'Notify when a device finds a block');
+        addSwitchRow(notifyGroup, 'notify-on-best-diff', 'Best Share Alert', 'Notify when a device beats its all-time best difficulty');
         addSwitchRow(notifyGroup, 'notify-on-offline', 'Offline Alerts', 'Notify when a device goes offline or comes back online');
 
         const tempAlertRow = new Adw.SpinRow({

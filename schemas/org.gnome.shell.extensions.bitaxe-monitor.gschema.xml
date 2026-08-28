@@ -231,6 +231,11 @@
       <summary>Notify on Block Found</summary>
       <description>Send a notification when a device finds a block</description>
     </key>
+    <key name="notify-on-best-diff" type="b">
+      <default>false</default>
+      <summary>Notify on New Best Difficulty</summary>
+      <description>Send a notification when a device beats its all-time best share difficulty</description>
+    </key>
     <key name="notify-on-offline" type="b">
       <default>false</default>
       <summary>Notify on Offline</summary>
