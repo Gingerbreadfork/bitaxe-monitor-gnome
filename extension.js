@@ -10,6 +10,7 @@ import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 import * as ModalDialog from 'resource:///org/gnome/shell/ui/modalDialog.js';
+import * as Config from 'resource:///org/gnome/shell/misc/config.js';
 import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 
 const SPARKLINE_PADDING = 2;
@@ -26,6 +27,12 @@ const POPUP_WORK_AREA_MARGIN = 8;
 const POPUP_MIN_SCROLL_HEIGHT = 300;
 const STATUS_NO_DEVICES = 'No devices';
 const STATUS_CONNECTING = 'Connecting...';
+
+// GNOME 48 added St.BoxLayout orientation and GNOME 51 removed vertical.
+const SHELL_MAJOR_VERSION = parseInt(Config.PACKAGE_VERSION.split('.')[0], 10);
+const VERTICAL_BOX = SHELL_MAJOR_VERSION >= 48
+    ? {orientation: Clutter.Orientation.VERTICAL}
+    : {vertical: true};
 
 class Sparkline {
     constructor({styleClass, windowSeconds = SPARKLINE_WINDOW_DEFAULT_MINUTES * 60, maxPoints = SPARKLINE_MAX_POINTS_HARD_CAP}) {
@@ -277,7 +284,7 @@ class DeviceSelectorDialog extends ModalDialog.ModalDialog {
         });
 
         const listBox = new St.BoxLayout({
-            vertical: true,
+            ...VERTICAL_BOX,
             style_class: 'device-selector-list',
         });
 
@@ -322,7 +329,7 @@ class DeviceSelectorDialog extends ModalDialog.ModalDialog {
         });
 
         const textBox = new St.BoxLayout({
-            vertical: true,
+            ...VERTICAL_BOX,
             x_expand: true,
             y_align: Clutter.ActorAlign.CENTER,
         });
@@ -533,7 +540,7 @@ class BitaxeIndicator extends PanelMenu.Button {
             x_expand: true,
         });
         this._farmViewBox = new St.BoxLayout({
-            vertical: true,
+            ...VERTICAL_BOX,
             x_expand: true,
         });
         this._farmViewContainer.add_child(this._farmViewBox);
@@ -558,7 +565,7 @@ class BitaxeIndicator extends PanelMenu.Button {
         });
 
         this._singleDeviceContainer = new St.BoxLayout({
-            vertical: true,
+            ...VERTICAL_BOX,
             x_expand: true,
         });
 
@@ -573,13 +580,13 @@ class BitaxeIndicator extends PanelMenu.Button {
         });
         this._leftColumn = new St.BoxLayout({
             style_class: 'bitaxe-popup-column bitaxe-popup-column-left',
-            vertical: true,
+            ...VERTICAL_BOX,
             x_expand: true,
             clip_to_allocation: true,
         });
         this._rightColumn = new St.BoxLayout({
             style_class: 'bitaxe-popup-column bitaxe-popup-column-right',
-            vertical: true,
+            ...VERTICAL_BOX,
             x_expand: true,
             clip_to_allocation: true,
         });
@@ -631,7 +638,7 @@ class BitaxeIndicator extends PanelMenu.Button {
         this._leftColumn.add_child(this._railsHeader);
         this._voltageRailsBox = new St.BoxLayout({
             style_class: 'bitaxe-rails-box',
-            vertical: true,
+            ...VERTICAL_BOX,
             x_expand: true,
         });
         this._voltageRailsBox.visible = false;
@@ -1268,7 +1275,7 @@ class BitaxeIndicator extends PanelMenu.Button {
 
         const card = new St.BoxLayout({
             style_class: 'bitaxe-farm-card-content',
-            vertical: true,
+            ...VERTICAL_BOX,
             x_expand: true,
         });
         cardButton.set_child(card);
@@ -1338,7 +1345,7 @@ class BitaxeIndicator extends PanelMenu.Button {
 
             const grid = new St.BoxLayout({
                 style_class: 'bitaxe-farm-stats-grid',
-                vertical: true,
+                ...VERTICAL_BOX,
             });
 
             for (const descriptor of descriptors) {

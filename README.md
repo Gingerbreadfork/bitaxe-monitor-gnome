@@ -223,7 +223,7 @@ POST http://<bitaxe-ip>/api/system/identify
 
 ## Requirements
 
-- **GNOME Shell**: 45, 46, 47, 48, 49, or 50
+- **GNOME Shell**: 45, 46, 47, 48, 49, 50, or 51
 - **Bitaxe Device**: Running AxeOS firmware
 - **Network**: Direct access to your Bitaxe device(s)
 
