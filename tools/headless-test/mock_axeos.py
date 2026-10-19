@@ -1,17 +1,13 @@
 #!/usr/bin/env python3
-"""Two mock AxeOS devices for the headless shell test.
-
-Port 8801 is a healthy Gamma; port 8802 has found a block. Creating a file
-named trigger-best or trigger-block next to this script bumps the best share
-or the block count on the next request. Identify requests toggle like the
-real firmware and are appended to identify.log.
-"""
+"""Mock AxeOS devices for the headless shell test: a healthy Gamma on port 8801
+and a block-finding Gamma on 8802. Trigger files and identify.log live in MOCK_OUT."""
 import json
 import os
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-OUT = os.environ.get("MOCK_OUT", os.path.dirname(os.path.abspath(__file__)))
+OUT = os.environ.get("MOCK_OUT") or os.path.join(os.path.dirname(os.path.abspath(__file__)), "out")
+os.makedirs(OUT, exist_ok=True)
 
 
 def base_info(suffix):
