@@ -1,11 +1,6 @@
 #!/bin/bash
-# Exercises the working tree in a headless GNOME Shell against mock devices
-# and writes screenshots plus logs to tools/headless-test/out/.
-#
-#   ./tools/headless-test/run.sh
-#
-# MONITOR=1440x900 changes the virtual monitor size. DEVICES_JSON replaces
-# the device list, for example to include a real miner on the LAN.
+# Runs the working tree in a headless GNOME Shell against mock devices and
+# writes screenshots and logs to tools/headless-test/out/. Usage is in README.md.
 set -u
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
