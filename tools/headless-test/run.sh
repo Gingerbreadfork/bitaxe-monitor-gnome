@@ -59,6 +59,23 @@ dismiss_banner() {
     sleep 1
 }
 
+note_count() {
+    gdbus call --session --dest org.gnome.Shell --object-path /org/gnome/Shell --method org.gnome.Shell.Eval "globalThis._notes.length" | sed -nE "s/.*'([0-9]+)'.*/\1/p"
+}
+
+wait_for_note() {
+    local before="$1" now
+    for _ in $(seq 1 40); do
+        now="$(note_count)"
+        if [ "${before:-0}" -lt "${now:-0}" ]; then
+            sleep 2
+            return
+        fi
+        sleep 0.5
+    done
+    echo "no notification arrived within 20s" | tee -a "$OUT/evals.log"
+}
+
 for _ in $(seq 1 60); do
     if gdbus call --session --dest org.gnome.Shell --object-path /org/gnome/Shell --method org.freedesktop.DBus.Peer.Ping >/dev/null 2>&1; then
         break
@@ -91,13 +108,15 @@ ev "(() => { const sv = $IND._singleDeviceScrollView; return 'single view: viewp
 
 ev "$IND.menu.close(); 'closed'" > /dev/null
 sleep 1
+NOTES_BEFORE="$(note_count)"
 touch "$OUT/trigger-best"
-sleep 6
+wait_for_note "$NOTES_BEFORE"
 shot 06-best-share-alert
 dismiss_banner
 
+NOTES_BEFORE="$(note_count)"
 touch "$OUT/trigger-block"
-sleep 6
+wait_for_note "$NOTES_BEFORE"
 shot 07-block-found-alert
 dismiss_banner
 ev "'notifications: ' + globalThis._notes.join(' ;; ')"
