@@ -1180,6 +1180,39 @@ class BitaxeIndicator extends PanelMenu.Button {
         }
     }
 
+    _createCardActionButton(label, accessibleName, onClick) {
+        const button = new St.Button({
+            label,
+            style_class: 'bitaxe-farm-card-action',
+            accessible_name: accessibleName,
+            can_focus: true,
+            track_hover: true,
+        });
+        button.connect('clicked', onClick);
+        return button;
+    }
+
+    _createIdentifyButton(device) {
+        let destroyed = false;
+        const button = this._createCardActionButton('👋', 'Identify device', () => {
+            this._identifyDevice(device).then(sayingHi => {
+                if (sayingHi === null || destroyed) {
+                    return;
+                }
+                if (sayingHi) {
+                    this._flashButtonLabel(button, '✓', IDENTIFY_DURATION_MS);
+                } else {
+                    this._cancelButtonFlash(button);
+                }
+            });
+        });
+        button.connect('destroy', () => {
+            destroyed = true;
+            this._cancelButtonFlash(button);
+        });
+        return button;
+    }
+
     _getTempWarningClass(stats) {
         const temp = this._toNumber(stats.temp, NaN);
         const target = this._toNumber(stats.temptarget, NaN);
@@ -1250,48 +1283,17 @@ class BitaxeIndicator extends PanelMenu.Button {
         });
         header.add_child(blockLabel);
 
-        if (stats && this._supportsIdentify(stats) && this._getDeviceTargetInfo(device)) {
-            const identifyButton = new St.Button({
-                label: '👋',
-                style_class: 'bitaxe-farm-card-action',
-                accessible_name: 'Identify device',
-                can_focus: true,
-                track_hover: true,
-            });
-            let identifyDestroyed = false;
-            identifyButton.connect('destroy', () => {
-                identifyDestroyed = true;
-                this._cancelButtonFlash(identifyButton);
-            });
-            identifyButton.connect('clicked', () => {
-                this._identifyDevice(device).then(sayingHi => {
-                    if (sayingHi === null || identifyDestroyed) {
-                        return;
-                    }
-                    if (sayingHi) {
-                        this._flashButtonLabel(identifyButton, '✓', IDENTIFY_DURATION_MS);
-                    } else {
-                        this._cancelButtonFlash(identifyButton);
-                    }
-                });
-            });
-            header.add_child(identifyButton);
+        const hasTarget = Boolean(this._getDeviceTargetInfo(device));
+        if (stats && hasTarget && this._supportsIdentify(stats)) {
+            header.add_child(this._createIdentifyButton(device));
         }
 
-        if (this._getDeviceTargetInfo(device)) {
-            const webUIButton = new St.Button({
-                label: '↗',
-                style_class: 'bitaxe-farm-card-action',
-                accessible_name: 'Open web UI',
-                can_focus: true,
-                track_hover: true,
-            });
-            webUIButton.connect('clicked', () => {
+        if (hasTarget) {
+            header.add_child(this._createCardActionButton('↗', 'Open web UI', () => {
                 const currentDevice = this._devices.find(d => d.id === device.id) || device;
                 const target = this._getDeviceTargetInfo(currentDevice);
                 this._openWebUIForUri(target ? target.baseUri : null);
-            });
-            header.add_child(webUIButton);
+            }));
         }
 
         const statusLabel = new St.Label({
