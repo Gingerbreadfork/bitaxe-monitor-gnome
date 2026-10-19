@@ -1135,7 +1135,7 @@ class BitaxeIndicator extends PanelMenu.Button {
             }
 
             const stats = this._deviceStats.get(device.id);
-            if (Boolean(stats) !== entry.hasStats) {
+            if (this._getFarmCardShape(device, stats) !== entry.shape) {
                 this._replaceFarmCard(device, descriptors);
                 continue;
             }
@@ -1178,6 +1178,13 @@ class BitaxeIndicator extends PanelMenu.Button {
         if (parent) {
             parent.remove_child(actor);
         }
+    }
+
+    _getFarmCardShape(device, stats) {
+        const hasStats = Boolean(stats);
+        const hasTarget = Boolean(this._getDeviceTargetInfo(device));
+        const hasIdentify = hasStats && hasTarget && this._supportsIdentify(stats);
+        return `${hasStats}:${hasTarget}:${hasIdentify}`;
     }
 
     _createCardActionButton(label, accessibleName, onClick) {
@@ -1369,7 +1376,7 @@ class BitaxeIndicator extends PanelMenu.Button {
             nicknameLabel,
             blockLabel,
             sparkline,
-            hasStats: Boolean(stats),
+            shape: this._getFarmCardShape(device, stats),
         });
 
         return cardButton;
