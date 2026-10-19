@@ -16,6 +16,7 @@ const SPARKLINE_PADDING = 2;
 const SPARKLINE_WINDOW_DEFAULT_MINUTES = 5;
 const SPARKLINE_MAX_POINTS_HARD_CAP = 4096;
 const HTTP_REQUEST_TIMEOUT_SECONDS = 10;
+const MAX_RESPONSE_BYTES = 1048576;
 const IDENTIFY_DURATION_MS = 30000;
 const OFFLINE_NOTIFY_FAILURES = 3;
 const ZERO_HASHRATE_NOTIFY_SAMPLES = 3;
@@ -1595,23 +1596,43 @@ class BitaxeIndicator extends PanelMenu.Button {
     }
 
     _fetchDeviceStats(device, fetchGeneration) {
-        return new Promise((resolve) => {
-            if (fetchGeneration !== this._activeFetchGeneration) {
-                resolve(null);
-                return;
-            }
+        if (fetchGeneration !== this._activeFetchGeneration) {
+            return Promise.resolve(null);
+        }
 
-            const target = this._getDeviceTargetInfo(device);
-            if (!target) {
-                resolve(null);
-                return;
-            }
+        const target = this._getDeviceTargetInfo(device);
+        if (!target) {
+            return Promise.resolve(null);
+        }
 
-            const url = `${target.baseUri}/api/system/info`;
-            const message = Soup.Message.new('GET', url);
+        return this._requestJson('GET', `${target.baseUri}/api/system/info`)
+            .then(stats => {
+                if (fetchGeneration !== this._activeFetchGeneration) {
+                    return null;
+                }
+                if (!stats || typeof stats !== 'object') {
+                    throw new Error('Response is not a JSON object');
+                }
+                this._deviceStats.set(device.id, stats);
+                return stats;
+            })
+            .catch(error => {
+                if (fetchGeneration === this._activeFetchGeneration && !this._isCancelledError(error)) {
+                    this._deviceStats.delete(device.id);
+                }
+                return null;
+            });
+    }
+
+    _isCancelledError(error) {
+        return Boolean(error && error.matches && error.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.CANCELLED));
+    }
+
+    _requestJson(method, url) {
+        return new Promise((resolve, reject) => {
+            const message = Soup.Message.new(method, url);
             if (!message) {
-                this._deviceStats.delete(device.id);
-                resolve(null);
+                reject(new Error(`Invalid URL: ${url}`));
                 return;
             }
 
@@ -1622,36 +1643,23 @@ class BitaxeIndicator extends PanelMenu.Button {
                 (session, result) => {
                     try {
                         const bytes = session.send_and_read_finish(result);
-                        if (fetchGeneration !== this._activeFetchGeneration) {
-                            resolve(null);
-                            return;
-                        }
-
                         const status = message.get_status();
                         if (status !== Soup.Status.OK) {
-                            throw new Error(`HTTP ${status}: ${message.get_reason_phrase()}`);
+                            const error = new Error(`HTTP ${status}: ${message.get_reason_phrase()}`);
+                            error.httpStatus = status;
+                            throw error;
                         }
-
-                        const decoder = new TextDecoder('utf-8');
                         const data = bytes.get_data();
-                        if (data && data.length > 1048576) {
+                        if (data && data.length > MAX_RESPONSE_BYTES) {
                             throw new Error(`Response too large: ${data.length} bytes`);
                         }
-                        const response = decoder.decode(data);
-                        const stats = JSON.parse(response);
-                        this._deviceStats.set(device.id, stats);
-                        resolve(stats);
+                        if (!data || data.length === 0) {
+                            resolve(null);
+                            return;
+                        }
+                        resolve(JSON.parse(new TextDecoder('utf-8').decode(data)));
                     } catch (e) {
-                        if (e.matches && e.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.CANCELLED)) {
-                            resolve(null);
-                            return;
-                        }
-                        if (fetchGeneration !== this._activeFetchGeneration) {
-                            resolve(null);
-                            return;
-                        }
-                        this._deviceStats.delete(device.id);
-                        resolve(null);
+                        reject(e);
                     }
                 }
             );
@@ -1668,43 +1676,6 @@ class BitaxeIndicator extends PanelMenu.Button {
         return major > 2 || (major === 2 && minor >= 12);
     }
 
-    _postToDevice(url) {
-        return new Promise((resolve, reject) => {
-            const message = Soup.Message.new('POST', url);
-            if (!message) {
-                reject(new Error(`Invalid URL: ${url}`));
-                return;
-            }
-
-            this._httpSession.send_and_read_async(
-                message,
-                GLib.PRIORITY_DEFAULT,
-                this._cancellable,
-                (session, result) => {
-                    try {
-                        const bytes = session.send_and_read_finish(result);
-                        const status = message.get_status();
-                        if (status !== Soup.Status.OK) {
-                            throw new Error(`HTTP ${status}: ${message.get_reason_phrase()}`);
-                        }
-                        const data = bytes.get_data();
-                        let body = null;
-                        if (data && data.length > 0) {
-                            try {
-                                body = JSON.parse(new TextDecoder('utf-8').decode(data));
-                            } catch (e) {
-                                body = null;
-                            }
-                        }
-                        resolve(body);
-                    } catch (e) {
-                        reject(e);
-                    }
-                }
-            );
-        });
-    }
-
     _identifyDevice(device) {
         const currentDevice = this._devices.find(d => d.id === device.id) || device;
         const target = this._getDeviceTargetInfo(currentDevice);
@@ -1713,7 +1684,7 @@ class BitaxeIndicator extends PanelMenu.Button {
         }
 
         const name = currentDevice.nickname || currentDevice.ip || 'Device';
-        return this._postToDevice(`${target.baseUri}/api/system/identify`)
+        return this._requestJson('POST', `${target.baseUri}/api/system/identify`)
             .then(body => {
                 const message = body && typeof body.message === 'string' ? body.message : '';
                 return !message.includes('no longer');
