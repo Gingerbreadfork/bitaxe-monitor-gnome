@@ -1686,12 +1686,19 @@ class BitaxeIndicator extends PanelMenu.Button {
         const name = currentDevice.nickname || currentDevice.ip || 'Device';
         return this._requestJson('POST', `${target.baseUri}/api/system/identify`)
             .then(body => {
-                const message = body && typeof body.message === 'string' ? body.message : '';
-                return !message.includes('no longer');
+                if (!body || typeof body.message !== 'string') {
+                    return null;
+                }
+                return !body.message.includes('no longer');
             })
             .catch(error => {
-                if (!error.matches || !error.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.CANCELLED)) {
-                    console.error(`[bitaxe-monitor] Identify request failed for ${name}:`, error);
+                if (this._isCancelledError(error)) {
+                    return null;
+                }
+                console.error(`[bitaxe-monitor] Identify request failed for ${name}:`, error);
+                if (error.httpStatus === Soup.Status.NOT_FOUND) {
+                    this._notify(`${name}: firmware does not support identify`);
+                } else {
                     this._notify(`${name}: identify request failed`);
                 }
                 return null;
