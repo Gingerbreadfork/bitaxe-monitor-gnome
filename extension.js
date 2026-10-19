@@ -37,13 +37,18 @@ class Sparkline {
             reactive: false,
         });
         this.actor.connect('repaint', this._onRepaint.bind(this));
-        this.actor.connect('style-changed', () => this.actor.queue_repaint());
+        this.actor.connect('style-changed', () => this.queueRepaint());
+        this.actor.connect('notify::mapped', actor => {
+            if (actor.mapped) {
+                actor.queue_repaint();
+            }
+        });
     }
 
     setWindowSeconds(windowSeconds) {
         this._windowSeconds = Math.max(30, windowSeconds);
         this._pruneOld(this._nowSeconds());
-        this._queueRepaint();
+        this.queueRepaint();
     }
 
     push(value) {
@@ -59,12 +64,12 @@ class Sparkline {
         if (this._values.length > this._maxPoints) {
             this._values.splice(0, this._values.length - this._maxPoints);
         }
-        this._queueRepaint();
+        this.queueRepaint();
     }
 
     clear() {
         this._values = [];
-        this._queueRepaint();
+        this.queueRepaint();
     }
 
     destroy() {
@@ -75,8 +80,8 @@ class Sparkline {
         this._values = [];
     }
 
-    _queueRepaint() {
-        if (this.actor && this.actor.get_stage()) {
+    queueRepaint() {
+        if (this.actor && this.actor.mapped) {
             this.actor.queue_repaint();
         }
     }
@@ -2572,7 +2577,7 @@ class BitaxeIndicator extends PanelMenu.Button {
 
         for (const deviceSparklines of this._deviceSparklines.values()) {
             for (const sparkline of deviceSparklines.values()) {
-                sparkline.actor.queue_repaint();
+                sparkline.queueRepaint();
             }
         }
     }
