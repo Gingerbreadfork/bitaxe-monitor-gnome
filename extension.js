@@ -1194,8 +1194,14 @@ class BitaxeIndicator extends PanelMenu.Button {
 
     _createIdentifyButton(device) {
         let destroyed = false;
+        let busy = false;
         const button = this._createCardActionButton('👋', 'Identify device', () => {
+            if (busy) {
+                return;
+            }
+            busy = true;
             this._identifyDevice(device).then(sayingHi => {
+                busy = false;
                 if (sayingHi === null || destroyed) {
                     return;
                 }
