@@ -1222,16 +1222,19 @@ class BitaxeIndicator extends PanelMenu.Button {
     }
 
     _createIdentifyButton(device) {
-        let destroyed = false;
-        let busy = false;
+        let pendingRequest = null;
         const button = this._createCardActionButton(IDENTIFY_ICON, 'Identify device', () => {
-            if (busy) {
+            if (pendingRequest) {
                 return;
             }
-            busy = true;
-            this._identifyDevice(device).then(sayingHi => {
-                busy = false;
-                if (sayingHi === null || destroyed) {
+            const cancellable = new Gio.Cancellable();
+            pendingRequest = cancellable;
+            this._identifyDevice(device, cancellable).then(sayingHi => {
+                if (cancellable.is_cancelled()) {
+                    return;
+                }
+                pendingRequest = null;
+                if (sayingHi === null) {
                     return;
                 }
                 if (sayingHi) {
@@ -1242,7 +1245,9 @@ class BitaxeIndicator extends PanelMenu.Button {
             });
         });
         button.connect('destroy', () => {
-            destroyed = true;
+            if (pendingRequest) {
+                pendingRequest.cancel();
+            }
             this._cancelButtonFlash(button);
         });
         return button;
@@ -1666,7 +1671,7 @@ class BitaxeIndicator extends PanelMenu.Button {
         return Boolean(error && error.matches && error.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.CANCELLED));
     }
 
-    _requestJson(method, url) {
+    _requestJson(method, url, cancellable = this._cancellable) {
         return new Promise((resolve, reject) => {
             const message = Soup.Message.new(method, url);
             if (!message) {
@@ -1677,7 +1682,7 @@ class BitaxeIndicator extends PanelMenu.Button {
             this._httpSession.send_and_read_async(
                 message,
                 GLib.PRIORITY_DEFAULT,
-                this._cancellable,
+                cancellable,
                 (session, result) => {
                     try {
                         const bytes = session.send_and_read_finish(result);
@@ -1714,7 +1719,7 @@ class BitaxeIndicator extends PanelMenu.Button {
         return major > 2 || (major === 2 && minor >= 12);
     }
 
-    _identifyDevice(device) {
+    _identifyDevice(device, cancellable) {
         const currentDevice = this._devices.find(d => d.id === device.id) || device;
         const target = this._getDeviceTargetInfo(currentDevice);
         if (!target) {
@@ -1722,7 +1727,7 @@ class BitaxeIndicator extends PanelMenu.Button {
         }
 
         const name = currentDevice.nickname || currentDevice.ip || 'Device';
-        return this._requestJson('POST', `${target.baseUri}/api/system/identify`)
+        return this._requestJson('POST', `${target.baseUri}/api/system/identify`, cancellable)
             .then(body => {
                 if (!body || typeof body.message !== 'string') {
                     return null;
