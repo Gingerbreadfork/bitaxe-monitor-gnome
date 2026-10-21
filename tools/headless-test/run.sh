@@ -101,6 +101,12 @@ sleep 1.5
 shot 05-single-view-block-device
 ev "(() => { const sv = $IND._singleDeviceScrollView; return 'single view: viewport ' + sv.height + 'px, content ' + $IND._singleDeviceContainer.height + 'px'; })()"
 
+ev "$IND._openDeviceSelectorDialog(); 'view selector'" > /dev/null
+sleep 1.5
+shot 05b-view-selector
+ev "$IND._dialog.close(); 'view selector closed'" > /dev/null
+sleep 1
+
 ev "$IND.menu.close(); 'closed'" > /dev/null
 sleep 1
 NOTES_BEFORE="$(note_count)"
