@@ -437,9 +437,11 @@ export default class BitaxeMonitorPreferences extends ExtensionPreferences {
             margin_top: 24,
         });
 
-        const logoLabel = new Gtk.Label();
-        logoLabel.set_markup('<span size="42pt">⛏️</span>');
-        headerBox.append(logoLabel);
+        const logo = new Gtk.Image({
+            icon_name: 'network-server-symbolic',
+            pixel_size: 64,
+        });
+        headerBox.append(logo);
 
         const titleLabel = new Gtk.Label({
             label: this.metadata.name ?? 'Bitaxe Monitor',
@@ -504,7 +506,7 @@ export default class BitaxeMonitorPreferences extends ExtensionPreferences {
         page.add(footerGroup);
 
         const footerLabel = new Gtk.Label({
-            label: 'MIT License · Built for the Bitaxe community · Happy mining! ⚡',
+            label: 'MIT License · Built for the Bitaxe community · Happy mining!',
             css_classes: ['dim-label', 'caption'],
             justify: Gtk.Justification.CENTER,
             wrap: true,

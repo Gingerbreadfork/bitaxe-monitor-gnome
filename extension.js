@@ -25,6 +25,10 @@ const TEMP_ALERT_HYSTERESIS_C = 3;
 const FARM_SPARKLINE_KEY = 'farm-hashrate';
 const POPUP_WORK_AREA_MARGIN = 8;
 const POPUP_MIN_SCROLL_HEIGHT = 300;
+const BLOCK_FOUND_ICON = 'starred-symbolic';
+const SELECTED_ICON = 'object-select-symbolic';
+const IDENTIFY_ICON = 'find-location-symbolic';
+const WEB_UI_ICON = 'send-to-symbolic';
 const STATUS_NO_DEVICES = 'No devices';
 const STATUS_CONNECTING = 'Connecting...';
 
@@ -354,8 +358,8 @@ class DeviceSelectorDialog extends ModalDialog.ModalDialog {
         box.add_child(textBox);
 
         if (isSelected) {
-            const checkmark = new St.Label({
-                text: '✓',
+            const checkmark = new St.Icon({
+                icon_name: SELECTED_ICON,
                 style_class: 'device-selector-checkmark',
                 y_align: Clutter.ActorAlign.CENTER,
             });
@@ -398,7 +402,7 @@ class BitaxeIndicator extends PanelMenu.Button {
         this._deviceSparklines = new Map();
         this._deviceAlertStates = new Map();
         this._hasFetchedStats = false;
-        this._pendingPanelLabelText = null;
+        this._pendingPanelLabel = null;
         this._sparklineWindowSeconds = this._getSparklineWindowSeconds();
         this._isPaused = false;
         this._currentView = 'auto';
@@ -407,21 +411,29 @@ class BitaxeIndicator extends PanelMenu.Button {
 
         this.add_style_class_name('bitaxe-indicator');
 
+        this._blockIcon = new St.Icon({
+            icon_name: BLOCK_FOUND_ICON,
+            style_class: 'system-status-icon bitaxe-block-icon',
+            visible: false,
+        });
         this._label = new St.Label({
             text: 'Bitaxe: --',
             y_align: Clutter.ActorAlign.CENTER,
         });
         this._label.add_style_class_name('bitaxe-label');
-        this.add_child(this._label);
+        const panelBox = new St.BoxLayout({style_class: 'panel-status-menu-box'});
+        panelBox.add_child(this._blockIcon);
+        panelBox.add_child(this._label);
+        this.add_child(panelBox);
 
         this._createMenuItems();
 
         this.menu.connect('open-state-changed', (_menu, isOpen) => {
             if (isOpen) {
                 this._updateScrollViewHeights();
-            } else if (this._pendingPanelLabelText !== null) {
-                this._label.text = this._pendingPanelLabelText;
-                this._pendingPanelLabelText = null;
+            } else if (this._pendingPanelLabel !== null) {
+                this._setPanelLabel(this._pendingPanelLabel.text, this._pendingPanelLabel.showBlockIcon);
+                this._pendingPanelLabel = null;
             }
         });
 
@@ -1149,7 +1161,7 @@ class BitaxeIndicator extends PanelMenu.Button {
 
             entry.nicknameLabel.text = device.nickname || device.ip || 'Device';
             if (stats) {
-                entry.blockLabel.visible = this._hasNewBlock(stats);
+                entry.blockIcon.visible = this._hasNewBlock(stats);
                 for (const descriptor of descriptors) {
                     const label = entry.valueLabels.get(descriptor.key);
                     if (label) {
@@ -1194,9 +1206,12 @@ class BitaxeIndicator extends PanelMenu.Button {
         return `${hasStats}:${hasTarget}:${hasIdentify}`;
     }
 
-    _createCardActionButton(label, accessibleName, onClick) {
+    _createCardActionButton(iconName, accessibleName, onClick) {
         const button = new St.Button({
-            label,
+            child: new St.Icon({
+                icon_name: iconName,
+                style_class: 'bitaxe-farm-card-action-icon',
+            }),
             style_class: 'bitaxe-farm-card-action',
             accessible_name: accessibleName,
             can_focus: true,
@@ -1209,7 +1224,7 @@ class BitaxeIndicator extends PanelMenu.Button {
     _createIdentifyButton(device) {
         let destroyed = false;
         let busy = false;
-        const button = this._createCardActionButton('👋', 'Identify device', () => {
+        const button = this._createCardActionButton(IDENTIFY_ICON, 'Identify device', () => {
             if (busy) {
                 return;
             }
@@ -1220,7 +1235,7 @@ class BitaxeIndicator extends PanelMenu.Button {
                     return;
                 }
                 if (sayingHi) {
-                    this._flashButtonLabel(button, '✓', IDENTIFY_DURATION_MS);
+                    this._flashButtonIcon(button, SELECTED_ICON, IDENTIFY_DURATION_MS);
                 } else {
                     this._cancelButtonFlash(button);
                 }
@@ -1297,11 +1312,12 @@ class BitaxeIndicator extends PanelMenu.Button {
         }
         header.add_child(nicknameLabel);
 
-        const blockLabel = new St.Label({
-            text: '🎉',
+        const blockIcon = new St.Icon({
+            icon_name: BLOCK_FOUND_ICON,
+            style_class: 'bitaxe-farm-block-icon',
             visible: this._hasNewBlock(stats),
         });
-        header.add_child(blockLabel);
+        header.add_child(blockIcon);
 
         const hasTarget = Boolean(this._getDeviceTargetInfo(device));
         if (stats && hasTarget && this._supportsIdentify(stats)) {
@@ -1309,18 +1325,19 @@ class BitaxeIndicator extends PanelMenu.Button {
         }
 
         if (hasTarget) {
-            header.add_child(this._createCardActionButton('↗', 'Open web UI', () => {
+            header.add_child(this._createCardActionButton(WEB_UI_ICON, 'Open web UI', () => {
                 const currentDevice = this._devices.find(d => d.id === device.id) || device;
                 const target = this._getDeviceTargetInfo(currentDevice);
                 this._openWebUIForUri(target ? target.baseUri : null);
             }));
         }
 
-        const statusLabel = new St.Label({
-            text: stats ? '●' : '○',
-            style_class: stats ? 'bitaxe-farm-status-online' : 'bitaxe-farm-status-offline',
+        const statusDot = new St.Widget({
+            style_class: `bitaxe-farm-status ${stats ? 'bitaxe-farm-status-online' : 'bitaxe-farm-status-offline'}`,
+            accessible_name: stats ? 'Online' : 'Offline',
+            y_align: Clutter.ActorAlign.CENTER,
         });
-        header.add_child(statusLabel);
+        header.add_child(statusDot);
         card.add_child(header);
 
         const valueLabels = new Map();
@@ -1379,9 +1396,8 @@ class BitaxeIndicator extends PanelMenu.Button {
         this._farmCards.set(device.id, {
             card: cardButton,
             valueLabels,
-            statusLabel,
             nicknameLabel,
-            blockLabel,
+            blockIcon,
             sparkline,
             shape: this._getFarmCardShape(device, stats),
         });
@@ -1727,16 +1743,17 @@ class BitaxeIndicator extends PanelMenu.Button {
             });
     }
 
-    _flashButtonLabel(button, text, durationMs) {
+    _flashButtonIcon(button, iconName, durationMs) {
         this._cancelButtonFlash(button);
-        const label = button.label;
-        button.label = text;
+        const icon = button.child;
+        const originalIconName = icon.icon_name;
+        icon.icon_name = iconName;
         const id = GLib.timeout_add(GLib.PRIORITY_DEFAULT, durationMs, () => {
             this._buttonFlashTimeouts.delete(button);
-            button.label = label;
+            icon.icon_name = originalIconName;
             return GLib.SOURCE_REMOVE;
         });
-        this._buttonFlashTimeouts.set(button, {id, label});
+        this._buttonFlashTimeouts.set(button, {id, icon, iconName: originalIconName});
     }
 
     _cancelButtonFlash(button) {
@@ -1746,7 +1763,7 @@ class BitaxeIndicator extends PanelMenu.Button {
         }
         GLib.source_remove(pending.id);
         this._buttonFlashTimeouts.delete(button);
-        button.label = pending.label;
+        pending.icon.icon_name = pending.iconName;
     }
 
     _getDeviceAlertState(deviceId) {
@@ -1810,7 +1827,7 @@ class BitaxeIndicator extends PanelMenu.Button {
             if (state.lastBlockFound !== null &&
                 blockFound > state.lastBlockFound &&
                 this._settings.get_boolean('notify-on-block-found')) {
-                this._notify(`🎉 ${name} found a block!`);
+                this._notify(`${name} found a block!`);
             }
             state.lastBlockFound = blockFound;
         }
@@ -1923,10 +1940,7 @@ class BitaxeIndicator extends PanelMenu.Button {
         }
 
         const labelParts = [];
-        let prefix = this._devices.length > 1 ? `${device.nickname || device.ip}: ` : '';
-        if (this._hasNewBlock(stats)) {
-            prefix = `🎉 ${prefix}`;
-        }
+        const prefix = this._devices.length > 1 ? `${device.nickname || device.ip}: ` : '';
 
         if (this._settings.get_boolean('show-hashrate')) {
             const hashrate = this._formatHashrate(this._toNumber(stats.hashRate, 0));
@@ -2004,7 +2018,7 @@ class BitaxeIndicator extends PanelMenu.Button {
             ? prefix + labelParts.join(separator)
             : prefix + 'Bitaxe';
 
-        this._updateLabel(labelText);
+        this._updateLabel(labelText, this._hasNewBlock(stats));
     }
 
     _updatePanelAggregate() {
@@ -2033,10 +2047,7 @@ class BitaxeIndicator extends PanelMenu.Button {
             }
         }
 
-        let prefix = `[${onlineCount}/${this._devices.length}] `;
-        if (hasNewBlock) {
-            prefix = `🎉 ${prefix}`;
-        }
+        const prefix = `[${onlineCount}/${this._devices.length}] `;
 
         if (this._settings.get_boolean('show-hashrate')) {
             labelParts.push(this._formatHashrate(totalHashrate));
@@ -2068,7 +2079,7 @@ class BitaxeIndicator extends PanelMenu.Button {
             ? prefix + labelParts.join(separator)
             : prefix + 'Bitaxe Farm';
 
-        this._updateLabel(labelText);
+        this._updateLabel(labelText, hasNewBlock);
     }
 
     _hasNewBlock(stats) {
@@ -2341,13 +2352,18 @@ class BitaxeIndicator extends PanelMenu.Button {
         }
     }
 
-    _updateLabel(text) {
+    _updateLabel(text, showBlockIcon = false) {
         if (this.menu && this.menu.isOpen) {
-            this._pendingPanelLabelText = text;
+            this._pendingPanelLabel = {text, showBlockIcon};
             return;
         }
-        this._pendingPanelLabelText = null;
+        this._pendingPanelLabel = null;
+        this._setPanelLabel(text, showBlockIcon);
+    }
+
+    _setPanelLabel(text, showBlockIcon) {
         this._label.text = text;
+        this._blockIcon.visible = showBlockIcon;
     }
 
     _setStatValue(key, value) {
@@ -2624,8 +2640,8 @@ class BitaxeIndicator extends PanelMenu.Button {
             }
             this._setRefreshButtonBusy(false);
             this._setStatValue('updatedLast', 'Paused');
-            this._pendingPanelLabelText = null;
-            this._label.text = 'Paused';
+            this._pendingPanelLabel = null;
+            this._setPanelLabel('Paused', false);
         } else {
             this._updateUI();
             this._fetchAllDevices();

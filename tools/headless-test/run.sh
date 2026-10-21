@@ -88,7 +88,7 @@ ev "$IND.menu.open(); 'opened'" > /dev/null
 sleep 1.5
 shot 02-farm-view
 
-ev "(() => { const out = []; for (const id of ['dev-1', 'dev-2']) { const e = $IND._farmCards.get(id); const h = e.card.get_child().get_first_child(); const b = h.get_children().find(c => c.label === '👋'); out.push(id + ': ' + (b ? 'has identify' : 'no identify')); if (b) { b.emit('clicked', 1); } } return out.join(', '); })()"
+ev "(() => { const out = []; for (const id of ['dev-1', 'dev-2']) { const e = $IND._farmCards.get(id); const h = e.card.get_child().get_first_child(); const b = h.get_children().find(c => c.accessible_name === 'Identify device'); out.push(id + ': ' + (b ? 'has identify' : 'no identify')); if (b) { b.emit('clicked', 1); } } return out.join(', '); })()"
 sleep 2.5
 shot 03-farm-identify-tick
 

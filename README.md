@@ -19,7 +19,7 @@ A comprehensive GNOME Shell extension for monitoring your Bitaxe mining devices.
 ### Multi-Device Support
 - **Manage unlimited devices** - Add multiple Bitaxe devices with custom nicknames
 - **Farm View** - Grid layout showing all devices at once (1-4 columns)
-- **Interactive Farm Cards** - Click a card to jump to that device's detailed view, use its ↗ shortcut to open the device's web UI, or 👋 (AxeOS 2.12 or newer) to make the device say "Hi!" on its own screen so you can pick it out of a shelf
+- **Interactive Farm Cards** - Click a card to jump to that device's detailed view, use its open button for the device's web UI, or its locate button (AxeOS 2.12 or newer) to make the device say "Hi!" on its own screen so you can pick it out of a shelf
 - **Farm Card Sparklines** - Every card carries a live hashrate graph
 - **Single Device View** - Detailed statistics for individual devices
 - **Quick View Switching** - Easy toggle between farm and device views
@@ -86,7 +86,7 @@ A comprehensive GNOME Shell extension for monitoring your Bitaxe mining devices.
 
 ### Alerts & Notifications
 Optional desktop notifications when a device needs attention:
-- **Block Found Alert** - When a device finds a block; the only alert that is on by default. The panel and the device's farm card also carry a 🎉 for as long as the device shows its own new-block banner, which you dismiss in its web UI
+- **Block Found Alert** - When a device finds a block; the only alert that is on by default. The panel and the device's farm card also show a star for as long as the device shows its own new-block banner, which you dismiss in its web UI
 - **Best Share Alert** - When a device beats its all-time best difficulty
 - **Offline Alerts** - When a device stops responding, and again when it comes back online
 - **Temperature Alert** - When ASIC temperature reaches your threshold
@@ -215,7 +215,7 @@ The API returns comprehensive system information including:
 - Device details and firmware version
 - Block information (height, network difficulty, blocks found)
 
-The only other call is made on demand, when you press 👋 on a farm card:
+The only other call is made on demand, when you press the locate button on a farm card:
 
 ```
 POST http://<bitaxe-ip>/api/system/identify
