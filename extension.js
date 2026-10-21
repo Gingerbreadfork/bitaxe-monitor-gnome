@@ -1005,12 +1005,7 @@ class BitaxeIndicator extends PanelMenu.Button {
             });
         }
         if (s.get_boolean('farm-show-efficiency')) {
-            add('efficiency', 'Efficiency', stats => {
-                const hr = this._toNumber(stats.hashRate, 0);
-                const pwr = this._toNumber(stats.power, 0);
-                const efficiency = (pwr > 0 && hr > 0) ? hr / pwr : NaN;
-                return Number.isFinite(efficiency) ? `${efficiency.toFixed(2)} GH/W` : '--';
-            });
+            add('efficiency', 'Efficiency', stats => this._formatEfficiency(this._getDeviceEfficiency(stats)));
         }
         if (s.get_boolean('farm-show-shares')) {
             add('shares', 'Shares', stats => this._formatCount(this._toNumber(stats.sharesAccepted, 0)));
@@ -1431,15 +1426,7 @@ class BitaxeIndicator extends PanelMenu.Button {
         const frequency = this._toNumber(stats.frequency, 0);
         this._setStatValue('frequency', this._formatFrequency(frequency));
 
-        let efficiency = this._toNumber(stats.efficiency, NaN);
-        if (!Number.isFinite(efficiency)) {
-            const hr = this._toNumber(stats.hashRate, 0);
-            const pwr = this._toNumber(stats.power, 0);
-            if (pwr > 0 && hr > 0) {
-                efficiency = hr / pwr;
-            }
-        }
-        this._setStatValue('efficiency', this._formatEfficiency(efficiency));
+        this._setStatValue('efficiency', this._formatEfficiency(this._getDeviceEfficiency(stats)));
 
         const overclockEnabled = stats.overclockEnabled === true || this._toNumber(stats.overclockEnabled, 0) === 1;
         this._setStatValue('overclock', overclockEnabled ? 'Enabled' : 'Disabled');
@@ -1935,14 +1922,7 @@ class BitaxeIndicator extends PanelMenu.Button {
         }
 
         if (this._settings.get_boolean('show-efficiency')) {
-            let efficiency = this._toNumber(stats.efficiency, NaN);
-            if (!Number.isFinite(efficiency)) {
-                const hr = this._toNumber(stats.hashRate, 0);
-                const pwr = this._toNumber(stats.power, 0);
-                if (pwr > 0 && hr > 0) {
-                    efficiency = hr / pwr;
-                }
-            }
+            const efficiency = this._getDeviceEfficiency(stats);
             if (Number.isFinite(efficiency)) {
                 labelParts.push(`${efficiency.toFixed(1)}GH/W`);
             }
@@ -2035,8 +2015,8 @@ class BitaxeIndicator extends PanelMenu.Button {
         }
 
         if (this._settings.get_boolean('show-efficiency')) {
-            if (totalPower > 0 && totalHashrate > 0) {
-                const efficiency = totalHashrate / totalPower;
+            const efficiency = this._calculateEfficiency(totalHashrate, totalPower);
+            if (Number.isFinite(efficiency)) {
                 labelParts.push(`${efficiency.toFixed(1)}GH/W`);
             }
         }
@@ -2084,6 +2064,18 @@ class BitaxeIndicator extends PanelMenu.Button {
             }
             return `${hashrate.toFixed(2)} GH/s`;
         }
+    }
+
+    _calculateEfficiency(hashrate, power) {
+        return hashrate > 0 && power > 0 ? hashrate / power : NaN;
+    }
+
+    _getDeviceEfficiency(stats) {
+        const reported = this._toNumber(stats.efficiency, NaN);
+        if (Number.isFinite(reported)) {
+            return reported;
+        }
+        return this._calculateEfficiency(this._toNumber(stats.hashRate, 0), this._toNumber(stats.power, 0));
     }
 
     _formatEfficiency(value) {
@@ -2486,14 +2478,6 @@ class BitaxeIndicator extends PanelMenu.Button {
     _pushDeviceSparklines(deviceId, stats) {
         const errorPercentage = this._toNumber(stats.errorPercentage, 0);
         const fanRpm = this._toNumber(stats.fanrpm, NaN);
-        let efficiency = this._toNumber(stats.efficiency, NaN);
-        if (!Number.isFinite(efficiency)) {
-            const hr = this._toNumber(stats.hashRate, 0);
-            const pwr = this._toNumber(stats.power, 0);
-            if (pwr > 0 && hr > 0) {
-                efficiency = hr / pwr;
-            }
-        }
         this._pushDeviceSparkline(deviceId, 'hashrate', this._toNumber(stats.hashRate, NaN));
         this._pushDeviceSparkline(deviceId, FARM_SPARKLINE_KEY, this._toNumber(stats.hashRate, NaN));
         this._pushDeviceSparkline(deviceId, 'error-rate', errorPercentage);
@@ -2501,7 +2485,7 @@ class BitaxeIndicator extends PanelMenu.Button {
         this._pushDeviceSparkline(deviceId, 'vrm-temp', this._toNumber(stats.vrTemp, NaN));
         this._pushDeviceSparkline(deviceId, 'power', this._toNumber(stats.power, NaN));
         this._pushDeviceSparkline(deviceId, 'fan', fanRpm);
-        this._pushDeviceSparkline(deviceId, 'efficiency', efficiency);
+        this._pushDeviceSparkline(deviceId, 'efficiency', this._getDeviceEfficiency(stats));
     }
 
     _updateSparklineVisibility() {
@@ -2745,16 +2729,7 @@ class BitaxeIndicator extends PanelMenu.Button {
         lines.push(`Temp: ASIC ${asicTemp}°C | VRM ${vrmTemp}°C`);
 
         const power = this._toNumber(stats.power, 0).toFixed(2);
-        let efficiency = this._toNumber(stats.efficiency, NaN);
-        if (!Number.isFinite(efficiency)) {
-            const hr = this._toNumber(stats.hashRate, 0);
-            const pwr = this._toNumber(stats.power, 0);
-            if (pwr > 0 && hr > 0) {
-                efficiency = hr / pwr;
-            }
-        }
-        const effStr = Number.isFinite(efficiency) ? `${efficiency.toFixed(2)} GH/W` : '--';
-        lines.push(`Power: ${power}W | Efficiency: ${effStr}`);
+        lines.push(`Power: ${power}W | Efficiency: ${this._formatEfficiency(this._getDeviceEfficiency(stats))}`);
 
         const frequency = this._toNumber(stats.frequency, 0);
         if (frequency > 0) {
@@ -2827,11 +2802,9 @@ class BitaxeIndicator extends PanelMenu.Button {
             lines.push(`  Temp: ${Math.round(this._toNumber(stats.temp, 0))}°C`);
             lines.push(`  Power: ${this._toNumber(stats.power, 0).toFixed(2)}W`);
 
-            const hr = this._toNumber(stats.hashRate, 0);
-            const pwr = this._toNumber(stats.power, 0);
-            if (pwr > 0 && hr > 0) {
-                const eff = hr / pwr;
-                lines.push(`  Efficiency: ${eff.toFixed(2)} GH/W`);
+            const efficiency = this._getDeviceEfficiency(stats);
+            if (Number.isFinite(efficiency)) {
+                lines.push(`  Efficiency: ${this._formatEfficiency(efficiency)}`);
             }
 
             lines.push(`  Shares: ${this._toNumber(stats.sharesAccepted, 0)}`);
@@ -2841,9 +2814,9 @@ class BitaxeIndicator extends PanelMenu.Button {
         lines.push('=== Farm Totals ===');
         lines.push(`Total Hashrate: ${this._formatHashrate(totalHashrate)}`);
         lines.push(`Total Power: ${totalPower.toFixed(2)}W`);
-        if (totalPower > 0 && totalHashrate > 0) {
-            const farmEff = totalHashrate / totalPower;
-            lines.push(`Average Efficiency: ${farmEff.toFixed(2)} GH/W`);
+        const farmEfficiency = this._calculateEfficiency(totalHashrate, totalPower);
+        if (Number.isFinite(farmEfficiency)) {
+            lines.push(`Average Efficiency: ${this._formatEfficiency(farmEfficiency)}`);
         }
         lines.push(`Total Shares: ${totalShares}`);
 
