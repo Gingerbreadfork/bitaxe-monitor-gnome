@@ -444,7 +444,7 @@ export default class BitaxeMonitorPreferences extends ExtensionPreferences {
         headerBox.append(logo);
 
         const titleLabel = new Gtk.Label({
-            label: this.metadata.name ?? 'Bitaxe Monitor',
+            label: this.metadata.name,
             css_classes: ['title-1'],
             margin_top: 6,
         });

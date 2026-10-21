@@ -64,9 +64,6 @@ class Sparkline {
     }
 
     push(value) {
-        if (!this.actor) {
-            return;
-        }
         const now = this._nowSeconds();
         this._values.push({
             timestamp: now,
@@ -85,15 +82,13 @@ class Sparkline {
     }
 
     destroy() {
-        if (this.actor) {
-            this.actor.destroy();
-            this.actor = null;
-        }
+        this.actor.destroy();
+        this.actor = null;
         this._values = [];
     }
 
     queueRepaint() {
-        if (this.actor && this.actor.mapped) {
+        if (this.actor.mapped) {
             this.actor.queue_repaint();
         }
     }
@@ -117,9 +112,7 @@ class Sparkline {
         const cr = area.get_context();
         const [width, height] = area.get_surface_size();
         if (width <= 0 || height <= 0) {
-            if (cr.$dispose) {
-                cr.$dispose();
-            }
+            cr.$dispose();
             return;
         }
 
@@ -134,9 +127,7 @@ class Sparkline {
         const innerWidth = Math.max(0, width - padding * 2);
         const innerHeight = Math.max(0, height - padding * 2);
         if (innerWidth <= 0 || innerHeight <= 0) {
-            if (cr.$dispose) {
-                cr.$dispose();
-            }
+            cr.$dispose();
             return;
         }
 
@@ -148,9 +139,7 @@ class Sparkline {
         cr.stroke();
 
         if (this._values.length === 0) {
-            if (cr.$dispose) {
-                cr.$dispose();
-            }
+            cr.$dispose();
             return;
         }
 
@@ -165,9 +154,7 @@ class Sparkline {
         }
 
         if (!Number.isFinite(min) || !Number.isFinite(max)) {
-            if (cr.$dispose) {
-                cr.$dispose();
-            }
+            cr.$dispose();
             return;
         }
 
@@ -259,9 +246,7 @@ class Sparkline {
             break;
         }
 
-        if (cr.$dispose) {
-            cr.$dispose();
-        }
+        cr.$dispose();
     }
 }
 
@@ -348,10 +333,8 @@ class DeviceSelectorDialog extends ModalDialog.ModalDialog {
                 text: subtitle,
                 style_class: 'device-selector-button-subtitle',
             });
-            if (subtitleWidget.clutter_text) {
-                subtitleWidget.clutter_text.set_single_line_mode(true);
-                subtitleWidget.clutter_text.set_ellipsize(Pango.EllipsizeMode.END);
-            }
+            subtitleWidget.clutter_text.set_single_line_mode(true);
+            subtitleWidget.clutter_text.set_ellipsize(Pango.EllipsizeMode.END);
             textBox.add_child(subtitleWidget);
         }
 
@@ -369,9 +352,7 @@ class DeviceSelectorDialog extends ModalDialog.ModalDialog {
         button.set_child(box);
 
         button.connect('clicked', () => {
-            if (this._onSelect) {
-                this._onSelect(id);
-            }
+            this._onSelect(id);
             this.close();
         });
 
@@ -749,9 +730,7 @@ class BitaxeIndicator extends PanelMenu.Button {
         });
         settingsButton.connect('clicked', () => {
             this.menu.close();
-            if (this._openPreferences) {
-                this._openPreferences();
-            }
+            this._openPreferences();
         });
 
         const openWebUIButton = new St.Button({
@@ -875,9 +854,7 @@ class BitaxeIndicator extends PanelMenu.Button {
         for (const [deviceId, sparklines] of this._deviceSparklines.entries()) {
             if (!activeDeviceIds.has(deviceId)) {
                 for (const sparkline of sparklines.values()) {
-                    if (sparkline) {
-                        sparkline.destroy();
-                    }
+                    sparkline.destroy();
                 }
                 sparklines.clear();
                 this._deviceSparklines.delete(deviceId);
@@ -919,10 +896,6 @@ class BitaxeIndicator extends PanelMenu.Button {
     }
 
     _buildDeviceSelector() {
-        if (!this._selectViewButton) {
-            return;
-        }
-
         if (this._devices.length <= 1) {
             this._selectViewButton.visible = false;
         } else {
@@ -930,18 +903,16 @@ class BitaxeIndicator extends PanelMenu.Button {
             this._selectViewButton.label = 'View';
         }
 
-        if (this._viewLabel) {
-            let currentViewLabel = '';
-            if (this._currentView === 'farm') {
-                currentViewLabel = 'Farm View';
-            } else {
-                const currentDevice = this._devices.find(d => d.id === this._currentView);
-                if (currentDevice) {
-                    currentViewLabel = currentDevice.nickname || currentDevice.ip || 'Device';
-                }
+        let currentViewLabel = '';
+        if (this._currentView === 'farm') {
+            currentViewLabel = 'Farm View';
+        } else {
+            const currentDevice = this._devices.find(d => d.id === this._currentView);
+            if (currentDevice) {
+                currentViewLabel = currentDevice.nickname || currentDevice.ip || 'Device';
             }
-            this._viewLabel.text = currentViewLabel;
         }
+        this._viewLabel.text = currentViewLabel;
     }
 
     _openDeviceSelectorDialog() {
@@ -1311,10 +1282,8 @@ class BitaxeIndicator extends PanelMenu.Button {
             style_class: 'bitaxe-farm-card-title',
             x_expand: true,
         });
-        if (nicknameLabel.clutter_text) {
-            nicknameLabel.clutter_text.set_single_line_mode(true);
-            nicknameLabel.clutter_text.set_ellipsize(Pango.EllipsizeMode.END);
-        }
+        nicknameLabel.clutter_text.set_single_line_mode(true);
+        nicknameLabel.clutter_text.set_ellipsize(Pango.EllipsizeMode.END);
         header.add_child(nicknameLabel);
 
         const blockIcon = new St.Icon({
@@ -1384,10 +1353,8 @@ class BitaxeIndicator extends PanelMenu.Button {
                     style_class: 'bitaxe-farm-stat-value',
                     x_expand: true,
                 });
-                if (valueWidget.clutter_text) {
-                    valueWidget.clutter_text.set_single_line_mode(true);
-                    valueWidget.clutter_text.set_ellipsize(Pango.EllipsizeMode.END);
-                }
+                valueWidget.clutter_text.set_single_line_mode(true);
+                valueWidget.clutter_text.set_ellipsize(Pango.EllipsizeMode.END);
                 row.add_child(labelWidget);
                 row.add_child(valueWidget);
                 grid.add_child(row);
@@ -2358,7 +2325,7 @@ class BitaxeIndicator extends PanelMenu.Button {
     }
 
     _updateLabel(text, showBlockIcon = false) {
-        if (this.menu && this.menu.isOpen) {
+        if (this.menu.isOpen) {
             this._pendingPanelLabel = {text, showBlockIcon};
             return;
         }
@@ -2430,10 +2397,8 @@ class BitaxeIndicator extends PanelMenu.Button {
         if (!isLeftColumn) {
             value.add_style_class_name('bitaxe-stat-value-fluid');
         }
-        if (value.clutter_text) {
-            value.clutter_text.set_single_line_mode(true);
-            value.clutter_text.set_ellipsize(Pango.EllipsizeMode.END);
-        }
+        value.clutter_text.set_single_line_mode(true);
+        value.clutter_text.set_ellipsize(Pango.EllipsizeMode.END);
 
         row.add_child(label);
         if (isLeftColumn) {
@@ -2552,10 +2517,6 @@ class BitaxeIndicator extends PanelMenu.Button {
 
     _updateNetworkVisibility() {
         const visible = this._settings.get_boolean('show-network-info');
-        if (!this._networkSectionActors) {
-            return;
-        }
-
         for (const actor of this._networkSectionActors) {
             actor.visible = visible;
         }
@@ -2576,10 +2537,7 @@ class BitaxeIndicator extends PanelMenu.Button {
     }
 
     _updateSparklineTheme() {
-        const containers = [this._singleDeviceContainer, this._farmViewContainer].filter(Boolean);
-        if (containers.length === 0) {
-            return;
-        }
+        const containers = [this._singleDeviceContainer, this._farmViewContainer];
 
         const themeClasses = [
             'bitaxe-sparkline-theme-colorful',
@@ -2614,10 +2572,6 @@ class BitaxeIndicator extends PanelMenu.Button {
     }
 
     _setRefreshButtonBusy(isBusy) {
-        if (!this._refreshButton) {
-            return;
-        }
-
         const canRefresh = !isBusy && !this._isPaused;
         this._refreshButton.reactive = canRefresh;
         this._refreshButton.can_focus = canRefresh;
@@ -2637,7 +2591,7 @@ class BitaxeIndicator extends PanelMenu.Button {
         this._isPaused = next;
 
         if (this._isPaused) {
-            if (this._inFlightDevices.size > 0 && this._cancellable) {
+            if (this._inFlightDevices.size > 0) {
                 this._activeFetchGeneration++;
                 this._cancellable.cancel();
                 this._cancellable = new Gio.Cancellable();
@@ -2656,9 +2610,6 @@ class BitaxeIndicator extends PanelMenu.Button {
     }
 
     _updatePauseButtonState() {
-        if (!this._pauseButton) {
-            return;
-        }
         this._pauseButton.label = this._isPaused ? 'Unpause' : 'Pause';
     }
 
@@ -2726,29 +2677,20 @@ class BitaxeIndicator extends PanelMenu.Button {
     }
 
     _updateWebUIButtonState() {
-        if (!this._openWebUIButton) {
-            return;
-        }
         const hasUri = Boolean(this._getBitaxeWebUIUri());
         this._openWebUIButton.reactive = hasUri;
         this._openWebUIButton.can_focus = hasUri;
     }
 
     _clearVoltageRails() {
-        if (this._voltageRailRows) {
-            for (const [key, row] of this._voltageRailRows.entries()) {
-                row.destroy();
-                this._statValueLabels.delete(key);
-            }
-            this._voltageRailRows.clear();
+        for (const [key, row] of this._voltageRailRows.entries()) {
+            row.destroy();
+            this._statValueLabels.delete(key);
         }
+        this._voltageRailRows.clear();
 
-        if (this._railsHeader) {
-            this._railsHeader.visible = false;
-        }
-        if (this._voltageRailsBox) {
-            this._voltageRailsBox.visible = false;
-        }
+        this._railsHeader.visible = false;
+        this._voltageRailsBox.visible = false;
     }
 
     _clearStatsUI() {
@@ -2929,22 +2871,18 @@ class BitaxeIndicator extends PanelMenu.Button {
         clipboard.set_text(St.ClipboardType.CLIPBOARD, clipboardText);
         clipboard.set_text(St.ClipboardType.PRIMARY, clipboardText);
 
-        if (this._copyStatsButton) {
-            this._copyStatsButton.label = 'Copied!';
+        this._copyStatsButton.label = 'Copied!';
 
-            if (this._copyStatsFeedbackTimeoutId) {
-                GLib.source_remove(this._copyStatsFeedbackTimeoutId);
-                this._copyStatsFeedbackTimeoutId = null;
-            }
-
-            this._copyStatsFeedbackTimeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 2000, () => {
-                this._copyStatsFeedbackTimeoutId = null;
-                if (this._copyStatsButton) {
-                    this._copyStatsButton.label = 'Copy Stats';
-                }
-                return GLib.SOURCE_REMOVE;
-            });
+        if (this._copyStatsFeedbackTimeoutId) {
+            GLib.source_remove(this._copyStatsFeedbackTimeoutId);
+            this._copyStatsFeedbackTimeoutId = null;
         }
+
+        this._copyStatsFeedbackTimeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 2000, () => {
+            this._copyStatsFeedbackTimeoutId = null;
+            this._copyStatsButton.label = 'Copy Stats';
+            return GLib.SOURCE_REMOVE;
+        });
     }
 
     destroy() {
@@ -2971,35 +2909,25 @@ class BitaxeIndicator extends PanelMenu.Button {
         }
         this._buttonFlashTimeouts.clear();
 
-        if (this._settingsChangedIds) {
-            for (const id of this._settingsChangedIds) {
-                this._settings.disconnect(id);
+        for (const id of this._settingsChangedIds) {
+            this._settings.disconnect(id);
+        }
+        this._settingsChangedIds = null;
+
+        this._cancellable.cancel();
+        this._cancellable = null;
+
+        this._httpSession.abort();
+        this._httpSession = null;
+
+        for (const deviceSparklines of this._deviceSparklines.values()) {
+            for (const sparkline of deviceSparklines.values()) {
+                sparkline.destroy();
             }
-            this._settingsChangedIds = null;
+            deviceSparklines.clear();
         }
-
-        if (this._cancellable) {
-            this._cancellable.cancel();
-            this._cancellable = null;
-        }
-
-        if (this._httpSession) {
-            this._httpSession.abort();
-            this._httpSession = null;
-        }
-
-        if (this._deviceSparklines) {
-            for (const deviceSparklines of this._deviceSparklines.values()) {
-                for (const sparkline of deviceSparklines.values()) {
-                    if (sparkline) {
-                        sparkline.destroy();
-                    }
-                }
-                deviceSparklines.clear();
-            }
-            this._deviceSparklines.clear();
-            this._deviceSparklines = null;
-        }
+        this._deviceSparklines.clear();
+        this._deviceSparklines = null;
 
         if (this._dialog) {
             this._dialog.destroy();
