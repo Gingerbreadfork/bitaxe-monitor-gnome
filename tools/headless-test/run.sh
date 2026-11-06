@@ -13,12 +13,19 @@ if [ -z "${HEADLESS_TEST_INNER:-}" ]; then
     mkdir -p "$OUT/xdg-config" "$OUT/xdg-data/gnome-shell/extensions" "$OUT/shots"
     ln -s "$ROOT" "$OUT/xdg-data/gnome-shell/extensions/$UUID"
     glib-compile-schemas "$ROOT/schemas/"
-    exec env HEADLESS_TEST_INNER=1 \
+    # The private bus starts its own document portal, which must not replace the desktop's one in /run/user.
+    RUNTIME_DIR="$(mktemp -d)"
+    env HEADLESS_TEST_INNER=1 \
+        XDG_RUNTIME_DIR="$RUNTIME_DIR" \
         XDG_CONFIG_HOME="$OUT/xdg-config" \
         XDG_DATA_HOME="$OUT/xdg-data" \
         GSETTINGS_BACKEND=keyfile \
         GTK_A11Y=none \
         timeout 200 dbus-run-session -- bash "$0"
+    status=$?
+    fusermount3 -u "$RUNTIME_DIR/doc" 2>/dev/null
+    rm -rf "$RUNTIME_DIR"
+    exit "$status"
 fi
 
 MONITOR="${MONITOR:-1920x1080}"
