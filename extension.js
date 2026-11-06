@@ -1027,11 +1027,8 @@ class BitaxeIndicator extends PanelMenu.Button {
             });
         }
         if (s.get_boolean('farm-show-pool')) {
-            add('pool', 'Pool', stats => stats.stratumURL || '--');
-            add('pool-port', 'Pool Port', stats => {
-                const port = this._toNumber(stats.stratumPort, 0);
-                return port > 0 ? `${port}` : '--';
-            });
+            add('pool', 'Pool', stats => this._describePool(this._getActivePool(stats), false) || '--');
+            add('pool-port', 'Pool Port', stats => this._formatPort(this._getActivePool(stats).port));
         }
         if (s.get_boolean('farm-show-uptime')) {
             add('uptime', 'Uptime', stats => this._formatUptime(stats.uptimeSeconds));
@@ -1426,13 +1423,11 @@ class BitaxeIndicator extends PanelMenu.Button {
 
         this._setStatValue('efficiency', this._formatEfficiency(this._getDeviceEfficiency(stats)));
 
-        const overclockEnabled = stats.overclockEnabled === true || this._toNumber(stats.overclockEnabled, 0) === 1;
-        this._setStatValue('overclock', overclockEnabled ? 'Enabled' : 'Disabled');
+        this._setStatValue('overclock', this._isFlagSet(stats.overclockEnabled) ? 'Enabled' : 'Disabled');
 
-        this._setStatValue('pool', stats.stratumURL || 'Not connected');
-
-        const poolPort = this._toNumber(stats.stratumPort, 0);
-        this._setStatValue('poolPort', poolPort > 0 ? `${poolPort}` : '--');
+        const pool = this._getActivePool(stats);
+        this._setStatValue('pool', this._describePool(pool, false) || 'Not connected');
+        this._setStatValue('poolPort', this._formatPort(pool.port));
 
         const poolDiff = this._toNumber(stats.poolDifficulty, 0);
         this._setStatValue('poolDifficulty', this._formatDifficulty(poolDiff));
@@ -2036,6 +2031,31 @@ class BitaxeIndicator extends PanelMenu.Button {
 
     _hasNewBlock(stats) {
         return Boolean(stats) && stats.showNewBlock === true;
+    }
+
+    _isFlagSet(value) {
+        return value === true || this._toNumber(value, 0) === 1;
+    }
+
+    _getActivePool(stats) {
+        const usingFallback = this._isFlagSet(stats.isUsingFallbackStratum);
+        return {
+            url: (usingFallback ? stats.fallbackStratumURL : stats.stratumURL) || '',
+            port: this._toNumber(usingFallback ? stats.fallbackStratumPort : stats.stratumPort, 0),
+            usingFallback,
+        };
+    }
+
+    _describePool(pool, includePort) {
+        if (!pool.url) {
+            return '';
+        }
+        const port = includePort && pool.port > 0 ? `:${pool.port}` : '';
+        return `${pool.url}${port}${pool.usingFallback ? ' (fallback)' : ''}`;
+    }
+
+    _formatPort(port) {
+        return port > 0 ? `${port}` : '--';
     }
 
     _formatTimeNow() {
@@ -2753,11 +2773,7 @@ class BitaxeIndicator extends PanelMenu.Button {
             lines.push(`Block Odds: ${this._formatBlockOdds(secondsPerBlock)} per day | Best Share ${this._formatBlockProgress(bestDiff, networkDifficulty)}`);
         }
 
-        const sharePoolPort = this._toNumber(stats.stratumPort, 0);
-        const pool = stats.stratumURL
-            ? `${stats.stratumURL}${sharePoolPort > 0 ? `:${sharePoolPort}` : ''}`
-            : 'Not connected';
-        lines.push(`Pool: ${pool}`);
+        lines.push(`Pool: ${this._describePool(this._getActivePool(stats), true) || 'Not connected'}`);
 
         const uptime = this._formatUptime(stats.uptimeSeconds);
         lines.push(`Uptime: ${uptime}`);

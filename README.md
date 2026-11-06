@@ -59,7 +59,7 @@ A comprehensive GNOME Shell extension for monitoring your Bitaxe mining devices.
   - Mining efficiency (GH/W) with sparklines
 
 - **Mining Stats**
-  - Pool host and port
+  - Active pool host and port, marked when the device has failed over to its fallback
   - Pool difficulty
   - Fallback pool
   - Shares accepted/rejected
