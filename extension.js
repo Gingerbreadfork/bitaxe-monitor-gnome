@@ -439,6 +439,7 @@ class BitaxeIndicator extends PanelMenu.Button {
         this._inFlightDevices = new Set();
         this._activeFetchGeneration = 0;
         this._devices = [];
+        this._deviceTargets = new Map();
         this._deviceStats = new Map();
         this._deviceFetchTimes = new Map();
         this._deviceSparklines = new Map();
@@ -901,27 +902,36 @@ class BitaxeIndicator extends PanelMenu.Button {
         this._activeFetchGeneration++;
         this._inFlightDevices.clear();
 
-        const activeDeviceIds = new Set(this._devices.map(device => device.id));
+        // A device whose address changed is a different miner, so nothing learned from the old one carries over.
+        const previousTargets = this._deviceTargets;
+        this._deviceTargets = new Map(this._devices.map(device => [device.id, this._getDeviceBaseUri(device)]));
+        const keepsTarget = deviceId => this._deviceTargets.has(deviceId) &&
+            this._deviceTargets.get(deviceId) === previousTargets.get(deviceId);
+
         for (const deviceId of this._deviceStats.keys()) {
-            if (!activeDeviceIds.has(deviceId)) {
+            if (!keepsTarget(deviceId)) {
                 this._dropDeviceStats(deviceId);
             }
         }
         for (const deviceId of this._deviceAlertStates.keys()) {
-            if (!activeDeviceIds.has(deviceId)) {
+            if (!keepsTarget(deviceId)) {
                 this._deviceAlertStates.delete(deviceId);
             }
         }
         for (const [deviceId, sparklines] of this._deviceSparklines.entries()) {
-            if (!activeDeviceIds.has(deviceId)) {
+            if (!this._deviceTargets.has(deviceId)) {
                 for (const sparkline of sparklines.values()) {
                     sparkline.destroy();
                 }
                 sparklines.clear();
                 this._deviceSparklines.delete(deviceId);
+            } else if (!keepsTarget(deviceId)) {
+                for (const sparkline of sparklines.values()) {
+                    sparkline.clear();
+                }
             }
         }
-        if (this._currentSparklineDeviceId && !activeDeviceIds.has(this._currentSparklineDeviceId)) {
+        if (this._currentSparklineDeviceId && !this._deviceTargets.has(this._currentSparklineDeviceId)) {
             this._currentSparklineDeviceId = null;
         }
 
@@ -934,10 +944,7 @@ class BitaxeIndicator extends PanelMenu.Button {
             }
         }
 
-        const previousIds = this._knownDeviceIds;
-        const previousCount = previousIds ? previousIds.size : 0;
-        this._knownDeviceIds = activeDeviceIds;
-
+        const previousCount = previousTargets.size;
         const count = this._devices.length;
         const crossedThreshold =
             (previousCount <= 1 && count >= 2) ||
@@ -1352,8 +1359,7 @@ class BitaxeIndicator extends PanelMenu.Button {
         if (hasTarget) {
             header.add_child(this._createCardActionButton(WEB_UI_ICON, 'Open web UI', () => {
                 const currentDevice = this._devices.find(d => d.id === device.id) || device;
-                const target = this._getDeviceTargetInfo(currentDevice);
-                this._openWebUIForUri(target ? target.baseUri : null);
+                this._openWebUIForUri(this._getDeviceBaseUri(currentDevice));
             }));
         }
 
@@ -1778,7 +1784,6 @@ class BitaxeIndicator extends PanelMenu.Button {
         let state = this._deviceAlertStates.get(deviceId);
         if (!state) {
             state = {
-                ip: null,
                 failCount: 0,
                 notifiedOffline: false,
                 lastBlockFound: null,
@@ -1804,12 +1809,6 @@ class BitaxeIndicator extends PanelMenu.Button {
 
         const state = this._getDeviceAlertState(device.id);
         const name = device.nickname || device.ip || 'Device';
-
-        if (state.ip !== device.ip) {
-            state.ip = device.ip;
-            state.lastBlockFound = null;
-            state.lastBestDiff = null;
-        }
 
         if (!stats) {
             state.failCount++;
@@ -2706,6 +2705,11 @@ class BitaxeIndicator extends PanelMenu.Button {
         };
     }
 
+    _getDeviceBaseUri(device) {
+        const target = this._getDeviceTargetInfo(device);
+        return target ? target.baseUri : null;
+    }
+
     _getBitaxeWebUIUri() {
         if (this._devices.length === 0) {
             return null;
@@ -2718,8 +2722,7 @@ class BitaxeIndicator extends PanelMenu.Button {
             device = this._devices.find(d => d.id === this._currentView) || this._devices[0];
         }
 
-        const target = this._getDeviceTargetInfo(device);
-        return target ? target.baseUri : null;
+        return this._getDeviceBaseUri(device);
     }
 
     _openWebUIForUri(uri) {
