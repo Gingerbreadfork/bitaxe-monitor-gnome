@@ -76,7 +76,7 @@ A comprehensive GNOME Shell extension for monitoring your Bitaxe mining devices.
   - ASIC model
   - Firmware version
   - Board version
-  - Last refresh timestamp
+  - Time the shown stats were fetched
 
 - **Network Details** (toggleable)
   - IP address

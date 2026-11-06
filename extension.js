@@ -440,6 +440,7 @@ class BitaxeIndicator extends PanelMenu.Button {
         this._activeFetchGeneration = 0;
         this._devices = [];
         this._deviceStats = new Map();
+        this._deviceFetchTimes = new Map();
         this._deviceSparklines = new Map();
         this._deviceAlertStates = new Map();
         this._hasFetchedStats = false;
@@ -903,7 +904,7 @@ class BitaxeIndicator extends PanelMenu.Button {
         const activeDeviceIds = new Set(this._devices.map(device => device.id));
         for (const deviceId of this._deviceStats.keys()) {
             if (!activeDeviceIds.has(deviceId)) {
-                this._deviceStats.delete(deviceId);
+                this._dropDeviceStats(deviceId);
             }
         }
         for (const deviceId of this._deviceAlertStates.keys()) {
@@ -1541,7 +1542,7 @@ class BitaxeIndicator extends PanelMenu.Button {
         this._setStatValue('freeHeap', this._formatBytes(freeHeap));
 
         this._updateVoltageRails(stats);
-        this._setStatValue('updatedLast', this._formatTimeNow());
+        this._setStatValue('updatedLast', this._isPaused ? 'Paused' : this._deviceFetchTimes.get(device.id));
     }
 
     _refresh() {
@@ -1667,14 +1668,20 @@ class BitaxeIndicator extends PanelMenu.Button {
                     throw new Error('Response is not device telemetry');
                 }
                 this._deviceStats.set(device.id, stats);
+                this._deviceFetchTimes.set(device.id, this._formatTimeNow());
                 return stats;
             })
             .catch(error => {
                 if (fetchGeneration === this._activeFetchGeneration && !this._isCancelledError(error)) {
-                    this._deviceStats.delete(device.id);
+                    this._dropDeviceStats(device.id);
                 }
                 return null;
             });
+    }
+
+    _dropDeviceStats(deviceId) {
+        this._deviceStats.delete(deviceId);
+        this._deviceFetchTimes.delete(deviceId);
     }
 
     _isCancelledError(error) {
