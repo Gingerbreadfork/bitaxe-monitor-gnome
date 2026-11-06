@@ -1602,8 +1602,9 @@ class BitaxeIndicator extends PanelMenu.Button {
                 if (fetchGeneration !== this._activeFetchGeneration) {
                     return null;
                 }
-                if (!stats || typeof stats !== 'object') {
-                    throw new Error('Response is not a JSON object');
+                // Every AxeOS release reports hashRate, so a reply without it is a proxy or error page, not telemetry.
+                if (!stats || typeof stats !== 'object' || !Number.isFinite(this._toNumber(stats.hashRate, NaN))) {
+                    throw new Error('Response is not device telemetry');
                 }
                 this._deviceStats.set(device.id, stats);
                 return stats;
