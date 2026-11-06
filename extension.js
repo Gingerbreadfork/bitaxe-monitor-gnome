@@ -888,11 +888,10 @@ class BitaxeIndicator extends PanelMenu.Button {
              this._devices.some(device => device.id === this._currentView));
 
         if (viewStillValid) {
-            this._updateViewDisplay();
+            this._setView(this._currentView);
         } else {
             this._updateViewMode();
         }
-        this._buildDeviceSelector();
     }
 
     _buildDeviceSelector() {
@@ -938,32 +937,31 @@ class BitaxeIndicator extends PanelMenu.Button {
     }
 
     _switchToView(view) {
-        this._currentView = view;
         if (view !== 'farm' && view !== 'auto') {
             this._selectedDeviceId = view;
             this._settings.set_string('selected-device-id', view);
         }
+        this._setView(view);
+    }
+
+    _setView(view) {
+        this._currentView = view;
         this._buildDeviceSelector();
-        this._updateViewDisplay();
-        this._updatePanelDisplay();
+        this._updateUI();
     }
 
     _updateViewMode() {
         const defaultView = this._settings.get_string('default-view');
 
         if (this._devices.length === 0) {
-            this._currentView = 'auto';
+            this._setView('auto');
         } else if (this._devices.length === 1) {
-            this._currentView = this._devices[0].id;
-        } else if (defaultView === 'farm') {
-            this._currentView = 'farm';
+            this._setView(this._devices[0].id);
         } else if (defaultView === 'single') {
-            this._currentView = this._selectedDeviceId || this._devices[0].id;
+            this._setView(this._selectedDeviceId || this._devices[0].id);
         } else {
-            this._currentView = 'farm';
+            this._setView('farm');
         }
-
-        this._updateViewDisplay();
     }
 
     _updateViewDisplay() {
@@ -1534,11 +1532,13 @@ class BitaxeIndicator extends PanelMenu.Button {
     }
 
     _onSelectedDeviceChanged() {
-        this._selectedDeviceId = this._settings.get_string('selected-device-id');
+        const selectedDeviceId = this._settings.get_string('selected-device-id');
+        if (selectedDeviceId === this._selectedDeviceId) {
+            return;
+        }
+        this._selectedDeviceId = selectedDeviceId;
         if (this._currentView !== 'farm' && this._currentView !== 'auto') {
-            this._currentView = this._selectedDeviceId;
-            this._updateViewDisplay();
-            this._buildDeviceSelector();
+            this._setView(selectedDeviceId);
         }
     }
 
