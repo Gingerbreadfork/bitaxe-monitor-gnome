@@ -18,6 +18,7 @@ const SPARKLINE_WINDOW_DEFAULT_MINUTES = 5;
 const SPARKLINE_MAX_POINTS_HARD_CAP = 4096;
 const HTTP_REQUEST_TIMEOUT_SECONDS = 10;
 const MAX_RESPONSE_BYTES = 1048576;
+const RESPONSE_READ_CHUNK_BYTES = 65536;
 const IDENTIFY_DURATION_MS = 30000;
 const OFFLINE_NOTIFY_FAILURES = 3;
 const ZERO_HASHRATE_NOTIFY_SAMPLES = 3;
@@ -37,6 +38,65 @@ const SHELL_MAJOR_VERSION = parseInt(Config.PACKAGE_VERSION.split('.')[0], 10);
 const VERTICAL_BOX = SHELL_MAJOR_VERSION >= 48
     ? {orientation: Clutter.Orientation.VERTICAL}
     : {vertical: true};
+
+function sendRequest(session, message, cancellable) {
+    return new Promise((resolve, reject) => {
+        session.send_async(message, GLib.PRIORITY_DEFAULT, cancellable, (_session, result) => {
+            try {
+                resolve(session.send_finish(result));
+            } catch (e) {
+                reject(e);
+            }
+        });
+    });
+}
+
+function readChunk(stream, cancellable) {
+    return new Promise((resolve, reject) => {
+        stream.read_bytes_async(RESPONSE_READ_CHUNK_BYTES, GLib.PRIORITY_DEFAULT, cancellable, (_stream, result) => {
+            try {
+                resolve(stream.read_bytes_finish(result));
+            } catch (e) {
+                reject(e);
+            }
+        });
+    });
+}
+
+// Stops reading as soon as the body passes the limit, so an endless or oversized reply is never buffered whole.
+async function readBody(stream, cancellable) {
+    const chunks = [];
+    let total = 0;
+    for (;;) {
+        const chunk = (await readChunk(stream, cancellable)).toArray();
+        if (chunk.length === 0) {
+            break;
+        }
+        total += chunk.length;
+        if (total > MAX_RESPONSE_BYTES) {
+            throw new Error(`Response larger than ${MAX_RESPONSE_BYTES} bytes`);
+        }
+        chunks.push(chunk);
+    }
+
+    const body = new Uint8Array(total);
+    let offset = 0;
+    for (const chunk of chunks) {
+        body.set(chunk, offset);
+        offset += chunk.length;
+    }
+    return body;
+}
+
+function closeStream(stream) {
+    stream.close_async(GLib.PRIORITY_DEFAULT, null, (_stream, result) => {
+        try {
+            stream.close_finish(result);
+        } catch (e) {
+            console.debug(`[bitaxe-monitor] Closing a response stream failed: ${e.message}`);
+        }
+    });
+}
 
 class Sparkline {
     constructor({styleClass, windowSeconds = SPARKLINE_WINDOW_DEFAULT_MINUTES * 60, maxPoints = SPARKLINE_MAX_POINTS_HARD_CAP}) {
@@ -1621,42 +1681,28 @@ class BitaxeIndicator extends PanelMenu.Button {
         return Boolean(error && error.matches && error.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.CANCELLED));
     }
 
-    _requestJson(method, url, cancellable = this._cancellable) {
-        return new Promise((resolve, reject) => {
-            const message = Soup.Message.new(method, url);
-            if (!message) {
-                reject(new Error(`Invalid URL: ${url}`));
-                return;
-            }
+    async _requestJson(method, url, cancellable = this._cancellable) {
+        const message = Soup.Message.new(method, url);
+        if (!message) {
+            throw new Error(`Invalid URL: ${url}`);
+        }
 
-            this._httpSession.send_and_read_async(
-                message,
-                GLib.PRIORITY_DEFAULT,
-                cancellable,
-                (session, result) => {
-                    try {
-                        const bytes = session.send_and_read_finish(result);
-                        const status = message.get_status();
-                        if (status !== Soup.Status.OK) {
-                            const error = new Error(`HTTP ${status}: ${message.get_reason_phrase()}`);
-                            error.httpStatus = status;
-                            throw error;
-                        }
-                        const data = bytes.get_data();
-                        if (data && data.length > MAX_RESPONSE_BYTES) {
-                            throw new Error(`Response too large: ${data.length} bytes`);
-                        }
-                        if (!data || data.length === 0) {
-                            resolve(null);
-                            return;
-                        }
-                        resolve(JSON.parse(new TextDecoder('utf-8').decode(data)));
-                    } catch (e) {
-                        reject(e);
-                    }
-                }
-            );
-        });
+        const stream = await sendRequest(this._httpSession, message, cancellable);
+        try {
+            const status = message.get_status();
+            if (status !== Soup.Status.OK) {
+                const error = new Error(`HTTP ${status}: ${message.get_reason_phrase()}`);
+                error.httpStatus = status;
+                throw error;
+            }
+            const body = await readBody(stream, cancellable);
+            if (body.length === 0) {
+                return null;
+            }
+            return JSON.parse(new TextDecoder('utf-8').decode(body));
+        } finally {
+            closeStream(stream);
+        }
     }
 
     _supportsIdentify(stats) {
